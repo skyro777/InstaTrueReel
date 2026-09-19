@@ -1,0 +1,19 @@
+--- Device Info ---
+Brand: realme
+OS Version: 16
+SDK Level: 36
+
+--- App Info ---
+Package Name: com.instagram.android
+Version Name: 435.0.0.37.76
+Version Code: 2147483647
+Patch version: 3.8.0
+
+--- Stack Trace ---
+java.lang.VerifyError: Verifier rejected class X.TTrueReelHelper: void X.TTrueReelHelper.A1E(android.view.View, android.view.View, int) failed to verify: void X.TTrueReelHelper.A1E(android.view.View, android.view.View, int): [0x56] 'this' argument 'Reference: android.view.View' not instance of 'Unresolved Reference: android.lang.Object' (declaration of 'X.TTrueReelHelper' appears in /data/app/~~XP8g2x00jBRgwpvZfSKBIA==/com.instagram.android-eXMXme5P-zBBTkRgu8rUmA==/base.apk!classes16.dex)
+	at X.6mW.A00(:0)
+	at X.0XX.run(:4)
+	at X.1ro.run(:24)
+	at X.1ro.run(:24)
+	at X.1rg.A00(:122)
+	at X.1rg.run(:102)
