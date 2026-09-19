@@ -791,3 +791,137 @@ out sanely — if anything still looks off in landscape, capture the new log
 ("v0.9 hook: restore src=" lines will name the exact lifecycle flow) and a
 screenshot; a Phase 10 can then hide the portrait chrome explicitly while
 fsForced.
+
+# Phase 9 — v0.10.0-phase9: THE OVERLAY PLAYER (real TikTok landscape fullscreen)
+
+## Field test of v0.9.1 (user device, Android 10 — log log.txt 952KB, screenshots
+## Screenshot_20260919-214238/-214248 — DIAGNOSED)
+
+Two distinct failures, both now understood:
+
+1. **Spurious auto-exits** (the "not stable" complaint): the log shows the
+   engage -> 5.5s -> `auto-exit (video no longer landscape)` -> pill re-created
+   IMMEDIATELY (the video was still landscape!) -> user re-tapped -> 3.5s ->
+   auto-exit again. Root cause: v0.9.1's auto-exit re-measured the video view
+   every tick while IN landscape, and any transient (stale fragment view after
+   the rotation flap, TextureView briefly <40px, DFS finding nothing) counted
+   as "non-landscape" twice -> exit. The measurement was never a reliable
+   signal for "user swiped to a portrait reel".
+2. **Landscape layout chaos** (the "not even normal looking" screenshots):
+   VLM analysis of both screenshots shows Instagram's portrait layout winning
+   the fight — video occupying only the bottom ~55-60% (portrait-computed
+   608px height inside the 1080px landscape window), a huge top black bar,
+   the portrait chrome (Reels/Friends header, partial side rail, caption
+   block) floating over/behind it. The v0.8 reassert engine and Instagram's
+   relayout code kept trading blows (log: endless `close:` cycles, and
+   `close: ViewPager2 h=-1->1920` — Instagram setting PORTRAIT heights while
+   in landscape).
+
+## The v0.10 architecture — stop fighting, take the video
+
+Core insight from smali research: the reels TextureView is created and owned
+by the Groot video glue — `X/1j4` "GrootReuseTextureViewControllerImpl"
+(`Ao2` = createPlayerViewForAttach) — which REUSES TextureViews and sets a
+SurfaceTextureListener (`X/1x5`) on them that (re)binds the surface to the
+HeroPlayer on every attach. Playback is keyed on the 7ky (SimpleVideoLayout)
+view, which never detaches when only the TextureView moves. Therefore:
+**reparenting the TextureView into our own decor overlay keeps the video
+playing, edge-to-edge, untouchable by Instagram's layout code.**
+
+What v0.10 builds (all in helper A2G..A2U + 3 new classes):
+
+- `A2G` overlay builder: opaque black fullscreen FrameLayout on the decor;
+  top info bar (gradient, "‹" back = exit, title = username/caption);
+  center play/pause indicator; bottom bar (gradient + centered action row);
+  left/right edge blockers (swallow stray taps so invisible portrait UI
+  below can't react); a full-size transparent TAP-SPY.
+- `TTrueReelTouch` (tap-spy): OnTouchListener that observes but NEVER
+  consumes (returns false) — taps and swipes fall through to Instagram's
+  real gesture pipeline, so tap-to-pause, double-tap-to-like and
+  swipe-to-page all keep working natively. On a clean single tap it toggles
+  our optimistic pause indicator (`A2N`, with a 280ms double-tap revert).
+- `A2H/A2J` adopt/restore: DFS for the largest TextureView under the
+  fragment view (same `A21` the pill uses), save parent/index/LayoutParams,
+  insert at overlay index 0 with MATCH_PARENT. Restore on exit/swap, with
+  dead-parent tolerance (fragment view destroyed mid-landscape).
+- `A2K` landscape tick (500ms via `TTrueReelTick` + on every recheck
+  layout): re-asserts the video LayoutParams (7ky's posted 25n runnables
+  clobber them when its own size changes); one-shot `isAvailable()` sanity
+  check at ~600ms (falls back to portrait if the surface never
+  materialized); PAGE-CHANGE DETECTION by video identity — a new laid-out
+  TextureView visible under the fragment view (center within 30% of window
+  center, offscreen preloads excluded) means the user swiped: landscape
+  video -> swap the adoptee + refresh title/rail; portrait video -> clean
+  auto-exit. Debounced across sightings AND across time (350ms anti-mid-
+  swipe guard). The v0.9.1 measurement-based auto-exit is GONE.
+- `A2M/A2Mv` rail finder: IgSimpleImageView icons (40-220px) centered in
+  the right 20% of the fragment, DFS order -> like/comment/share targets.
+- `A2P` synthetic tap: MotionEvent.obtain(JJIFFI) DOWN+UP at the view
+  center + performClick fallback. Works on hidden views.
+- `A2Q/A2R/A2S` action row: like stays in landscape (heart flashes red
+  700ms); comment/share exit to portrait first (their sheets are portrait
+  bottom sheets that would open BEHIND the overlay) then tap the real
+  buttons after 400ms (`TTrueReelTap`).
+- `A2L/A2Lv` title finder: deepest non-blank TextView in the bottom-left
+  quadrant (username/caption), fallback "Reels".
+- `A26/A27` rewritten exits: stop tick, restore video, remove overlay,
+  portrait, strip visible, engine re-run, full field cleanup.
+
+## The Android 16+ crash (crash_report_2026-09-19_21-22-18.txt) — FIXED
+
+`java.lang.VerifyError: Verifier rejected class X.TTrueReelHelper: A1E...
+[0x56] 'this' argument 'Reference: android.view.View' not instance of
+'Unresolved Reference: android.lang.Object'` — the hand-written null-check
+idiom in A1E called `Landroid/lang/Object;->getClass()`. `android.lang.Object`
+does not exist (it's `java.lang.Object`); Android <= 14 soft-fails unresolved
+references (the error was swallowed by A1E's try/catch — which is why Android
+10 worked), but Android 16's (SDK 36) stricter verifier hard-rejects the whole
+class at load time -> crash at app open (our 6mW.A00 orientation gate loads
+the helper at launch). Fixed to `Ljava/lang/Object;->getClass()` and the
+entire helper audited for unresolved class references (all 45 distinct
+external class refs verified real).
+
+## Local validation performed (against the FULL 177k-file base decode)
+
+- All 8 helper classes assemble clean (smali 2.5.2 --api 29)
+- Full patcher run: **189/189 checks pass**, exit 0, idempotent re-run ok
+- All 9 patched target files (9Wz, AFt, 6mW, 1fC, 1fI, 0bI, 0bQ, 2Iv, 2ZS)
+  assemble together with the helpers into a single test dex
+
+## Expected on-device (v0.10)
+
+Tap "Full screen" on a landscape reel -> rotation -> video fills the screen
+edge-to-edge, TikTok chrome on top; tap video = pause (big play icon),
+double-tap = like, swipe = next reel (swap if landscape, clean exit if
+portrait), back arrow / leaving Reels = portrait restored. Toast:
+"InstaTrueReel v0.10.0: fullscreen ON".
+
+## Next (Phase 10 candidates — after v0.10 field test)
+
+1. **SEEKBAR + TIMESTAMPS (the last missing TikTok chrome piece)**. The
+   player control surface is mapped but not yet wired: reels playback runs
+   on Facebook's HeroPlayer — wrapper `X/1c8` (constructed with
+   HeroPlayerSetting; playback registry `X/3dN.EeD/Eu1` keyed on the 7ky
+   view via `X/7js`), state machine `X/1cN` with:
+   - position: `1cN.A0N()J` (live-computed ms)
+   - duration: `1cN.A0O()J` (from state snapshot `X/0X7.A0I`)
+   - seek: `1cN.A04(1cN, seekMs, jumpSeek, preview)V`
+   - (feed-style scrubber UI exists: com.instagram.ui.mediaactions.
+     VideoScrubberSeekBar + controller X/3HF, but that is the FEED player,
+     not reels)
+   Remaining work: find the runtime chain page -> 1c8/1cN (likely through
+   the mci attachment layer: 7js.A00 -> 0HJ/DAK.A06), or hook a state-update
+   call site (1cN.A01 processes player Messages) to capture position/
+   duration continuously, then add a SeekBar row to the A2G bottom bar.
+2. **Pause-state accuracy**: our indicator is optimistic (mirrors our own
+   taps). A hook on the real pause path would make it exact — the gesture
+   chain is GestureManagerFrameLayout.dispatchTouchEvent -> X/2FQ gesture
+   manager -> listener interface (X/1od subclass family); the final player
+   call was not yet located. Alternative: 3EO.getMuteOrPauseIconImageView
+   visibility polling.
+3. **Landscape-anchored comment/share sheets** (stay in landscape instead
+   of exiting): reparent the opened bottom sheet into our overlay when it
+   attaches.
+4. **Reels lag investigation** (user-reported, unrelated to fullscreen):
+   4K feed videos vs patch overhead — profile with `adb shell dumpsys
+   gfxinfo com.instagram.android` while scrolling reels.

@@ -140,6 +140,12 @@ CLICK_SRC = os.path.join(HERE, "helper_TTrueReelClick.smali")
 CLICK_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelClick.smali")
 RECHECK_SRC = os.path.join(HERE, "helper_TTrueReelRecheck.smali")
 RECHECK_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelRecheck.smali")
+TOUCH_SRC = os.path.join(HERE, "helper_TTrueReelTouch.smali")
+TOUCH_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelTouch.smali")
+TICK_SRC = os.path.join(HERE, "helper_TTrueReelTick.smali")
+TICK_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelTick.smali")
+TAP_SRC = os.path.join(HERE, "helper_TTrueReelTap.smali")
+TAP_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelTap.smali")
 
 CLIPS_VIEWER = os.path.join(DECODED, "smali_classes16", "X", "9Wz.smali")
 CLIPS_TAB = os.path.join(DECODED, "smali_classes16", "X", "AFt.smali")
@@ -411,6 +417,24 @@ def main():
         shutil.copyfile(RECHECK_SRC, RECHECK_DST)
         report.append("  [ ok ] helper TTrueReelRecheck v0.9 installed -> smali_classes16/X/")
 
+    if os.path.isfile(TOUCH_DST):
+        report.append("  [skip] helper TTrueReelTouch already installed")
+    else:
+        shutil.copyfile(TOUCH_SRC, TOUCH_DST)
+        report.append("  [ ok ] helper TTrueReelTouch v0.10 installed -> smali_classes16/X/")
+
+    if os.path.isfile(TICK_DST):
+        report.append("  [skip] helper TTrueReelTick already installed")
+    else:
+        shutil.copyfile(TICK_SRC, TICK_DST)
+        report.append("  [ ok ] helper TTrueReelTick v0.10 installed -> smali_classes16/X/")
+
+    if os.path.isfile(TAP_DST):
+        report.append("  [skip] helper TTrueReelTap already installed")
+    else:
+        shutil.copyfile(TAP_SRC, TAP_DST)
+        report.append("  [ ok ] helper TTrueReelTap v0.10 installed -> smali_classes16/X/")
+
     # ---------- 2. THE CORE PATCH: force 9Wz.EEr() = true ----------
     report.append("ClipsViewerFragment native edge-to-edge switch (X/9Wz.EEr):")
     src = read(CLIPS_VIEWER)
@@ -574,7 +598,7 @@ def main():
         (HELPER_DST, "invoke-direct/range {v2 .. v7}", "helper v0.6 range-invoke arity correct"),
         (HELPER_DST, "0x7f0b3f45", "helper targets swipeable_tab_view_pager"),
         (HELPER_DST, "0x7f0b2246", "helper targets layout_container_main"),
-        (HELPER_DST, 'const-string v1, "InstaTrueReel v0.9.1: fullscreen ON"', "toast marker v0.9.1 present"),
+        (HELPER_DST, 'const-string v1, "InstaTrueReel v0.10.0: fullscreen ON"', "toast marker v0.10.0 present"),
         (HELPER_DST, 'v0.6 deblock eval: pager=', "v0.6 deblock eval diagnostics present"),
         (HELPER_DST, 'v0.7 liberate: chain freed (n=', "v0.7 liberation summary log present"),
         (HELPER_DST, 'v0.6 restore-layout: chain restored (n=', "v0.6 chain-restore log present"),
@@ -620,7 +644,7 @@ def main():
         (HELPER_DST, "fsEngageAt:J", "v0.9.1 engage-time field present"),
         (HELPER_DST, "fsNonLand:I", "v0.9.1 auto-exit debounce field present"),
         (HELPER_DST, "v0.9 restore skipped (fs transient)", "v0.9.1 transient-rotation guard present"),
-        (HELPER_DST, "v0.9 fs: auto-exit (video no longer landscape)", "v0.9.1 auto-exit log present"),
+        (HELPER_DST, "v0.10 fs: auto-exit (portrait video swiped in)", "v0.10 page-change auto-exit log present"),
         (HELPER_DST, "v0.9 fs: portrait-lock blocked", "v0.9.1 gate-block log present"),
         (HELPER_DST, ".method public static A2B(Landroidx/fragment/app/Fragment;)V", "v0.9.1 restore bridge A2B present"),
         (HELPER_DST, ".method public static A2C(Landroidx/fragment/app/Fragment;)V", "v0.9.1 restore bridge A2C present"),
@@ -659,37 +683,74 @@ def main():
         (CLICK_DST, "implements Landroid/view/View$OnClickListener;", "v0.9 click implements OnClickListener"),
         (CLICK_DST, "TTrueReelHelper;->A24()V", "v0.9 click -> enter landscape"),
         (CLICK_DST, "TTrueReelHelper;->A26()V", "v0.9 click -> exit landscape"),
+        (CLICK_DST, "TTrueReelHelper;->A2Q()V", "v0.10 click -> like action"),
+        (CLICK_DST, "TTrueReelHelper;->A2R()V", "v0.10 click -> comment action"),
+        (CLICK_DST, "TTrueReelHelper;->A2S()V", "v0.10 click -> share action"),
         (RECHECK_DST, ".class public LX/TTrueReelRecheck;", "v0.9 recheck listener class present"),
         (RECHECK_DST, "implements Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;", "v0.9 recheck implements layout listener"),
         (RECHECK_DST, "TTrueReelHelper;->A20(Landroid/app/Activity;)V", "v0.9 recheck -> fullscreen orchestrator"),
+        (TOUCH_DST, ".class public LX/TTrueReelTouch;", "v0.10 tap-spy class present"),
+        (TOUCH_DST, "implements Landroid/view/View$OnTouchListener;", "v0.10 tap-spy implements OnTouchListener"),
+        (TOUCH_DST, "TTrueReelHelper;->A2N()V", "v0.10 tap-spy -> pause toggle"),
+        (TICK_DST, ".class public LX/TTrueReelTick;", "v0.10 tick class present"),
+        (TICK_DST, "TTrueReelHelper;->A2K()V", "v0.10 tick -> landscape tick body"),
+        (TAP_DST, ".class public LX/TTrueReelTap;", "v0.10 delayed-tap class present"),
+        (TAP_DST, "TTrueReelHelper;->A2P(Landroid/view/View;)V", "v0.10 delayed-tap -> synthetic tap"),
         (HELPER_DST, ".method public static A20(Landroid/app/Activity;)V", "v0.9 fullscreen orchestrator present"),
         (HELPER_DST, ".method public static A21(Landroid/view/View;I)V", "v0.9 TextureView DFS present"),
         (HELPER_DST, ".method public static A22(Landroid/app/Activity;)V", "v0.9 pill factory present"),
         (HELPER_DST, ".method public static A23(Landroid/app/Activity;Landroid/view/View;)V", "v0.9 pill positioner present"),
-        (HELPER_DST, ".method public static A24()V", "v0.9 landscape enter present"),
-        (HELPER_DST, ".method public static A25(Landroid/app/Activity;)V", "v0.9 exit-button factory present"),
-        (HELPER_DST, ".method public static A26()V", "v0.9 landscape exit present"),
-        (HELPER_DST, ".method public static A27()V", "v0.9 fullscreen cleanup present"),
+        (HELPER_DST, ".method public static A24()V", "v0.10 landscape enter present"),
+        (HELPER_DST, ".method public static A26()V", "v0.10 landscape exit present"),
+        (HELPER_DST, ".method public static A27()V", "v0.10 fullscreen cleanup present"),
+        (HELPER_DST, ".method public static A2G(Landroid/app/Activity;)V", "v0.10 overlay builder present"),
+        (HELPER_DST, ".method public static A2H()Z", "v0.10 video adopter present"),
+        (HELPER_DST, ".method public static A2J()V", "v0.10 video restorer present"),
+        (HELPER_DST, ".method public static A2K()V", "v0.10 landscape tick body present"),
+        (HELPER_DST, ".method public static A2L()V", "v0.10 title finder present"),
+        (HELPER_DST, ".method public static A2M()V", "v0.10 rail finder present"),
+        (HELPER_DST, ".method public static A2N()V", "v0.10 pause toggle present"),
+        (HELPER_DST, ".method public static A2P(Landroid/view/View;)V", "v0.10 synthetic tap present"),
+        (HELPER_DST, ".method public static A2T(Landroid/content/Context;Ljava/lang/CharSequence;IF)Landroid/widget/TextView;", "v0.10 action button factory present"),
+        (HELPER_DST, ".method public static A2U(Landroid/view/View;J)V", "v0.10 delayed tap helper present"),
         (HELPER_DST, "fsPill:Landroid/view/View;", "v0.9 pill field present"),
-        (HELPER_DST, "fsExit:Landroid/view/View;", "v0.9 exit-button field present"),
+        (HELPER_DST, "fsOverlay:Landroid/widget/FrameLayout;", "v0.10 overlay root field present"),
+        (HELPER_DST, "fsVideo:Landroid/view/View;", "v0.10 adopted-video field present"),
+        (HELPER_DST, "fsVideoParent:Landroid/view/ViewGroup;", "v0.10 video parent field present"),
+        (HELPER_DST, "fsVideoParams:Landroid/view/ViewGroup$LayoutParams;", "v0.10 video params field present"),
+        (HELPER_DST, "fsVideoIndex:I", "v0.10 video index field present"),
+        (HELPER_DST, "fsTopBar:Landroid/view/View;", "v0.10 top bar field present"),
+        (HELPER_DST, "fsBottomBar:Landroid/view/View;", "v0.10 bottom bar field present"),
+        (HELPER_DST, "fsPlayIcon:Landroid/view/View;", "v0.10 play icon field present"),
+        (HELPER_DST, "fsTapSpy:Landroid/view/View;", "v0.10 tap spy field present"),
+        (HELPER_DST, "fsNewSeenAt:J", "v0.10 anti-mid-swipe timing field present"),
         (HELPER_DST, "fsForced:Z", "v0.9 forced-orientation flag present"),
         (HELPER_DST, "fsListener:Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;", "v0.9 layout-listener field present"),
         (HELPER_DST, "fsBest:Landroid/view/View;", "v0.9 DFS best field present"),
         (HELPER_DST, "fsBestArea:I", "v0.9 DFS best-area field present"),
         (HELPER_DST, "instance-of v0, p0, Landroid/view/TextureView;", "v0.9 video-surface detection uses TextureView"),
+        (HELPER_DST, "instance-of v0, p0, Lcom/instagram/common/ui/base/IgSimpleImageView;", "v0.10 rail collector targets IgSimpleImageView"),
+        (HELPER_DST, "Landroid/view/MotionEvent;->obtain(JJIFFI)Landroid/view/MotionEvent;", "v0.10 synthetic tap uses MotionEvent.obtain"),
         (HELPER_DST, "Landroid/app/Activity;->setRequestedOrientation(I)V", "v0.9 rotates the host activity"),
         (HELPER_DST, "Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V", "v0.9 builds FrameLayout LayoutParams"),
         (HELPER_DST, "Landroid/graphics/drawable/GradientDrawable;->setCornerRadius(F)V", "v0.9 pill rounded background"),
+        (HELPER_DST, "Landroid/graphics/drawable/GradientDrawable$Orientation;->TOP_BOTTOM:Landroid/graphics/drawable/GradientDrawable$Orientation;", "v0.10 top bar gradient present"),
         (HELPER_DST, "Landroid/view/ViewTreeObserver;->addOnGlobalLayoutListener(Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;)V", "v0.9 listener attach present"),
         (HELPER_DST, "Landroid/view/ViewTreeObserver;->removeOnGlobalLayoutListener(Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;)V", "v0.9 listener detach present"),
-        (HELPER_DST, "v0.9 fs: landscape engaged", "v0.9 enter-landscape log present"),
-        (HELPER_DST, "v0.9 fs: back to portrait", "v0.9 exit-landscape log present"),
+        (HELPER_DST, "v0.10 fs: landscape engaged (overlay player)", "v0.10 enter-landscape log present"),
+        (HELPER_DST, "v0.10 fs: back to portrait", "v0.10 exit-landscape log present"),
+        (HELPER_DST, "v0.10 fs: overlay player built", "v0.10 overlay-built log present"),
+        (HELPER_DST, "v0.10 fs: video adopted", "v0.10 video-adopted log present"),
+        (HELPER_DST, "v0.10 fs: auto-exit (portrait video swiped in)", "v0.10 auto-exit log present"),
+        (HELPER_DST, "v0.10 fs: surface never materialized", "v0.10 surface sanity log present"),
         (HELPER_DST, "v0.9 fs: pill created", "v0.9 pill-created log present"),
-        (HELPER_DST, "v0.9 fs cleanup: exception", "v0.9 cleanup exception log present"),
+        (HELPER_DST, "v0.10 fs cleanup: exception", "v0.10 cleanup exception log present"),
         (HELPER_DST, "v0.9 fs: exception (recovered)", "v0.9 orchestrator exception log present"),
         (HELPER_DST, "invoke-static {}, LX/TTrueReelHelper;->A27()V", "v0.9 cleanup wired into A01"),
         (HELPER_DST, "invoke-static {p0}, LX/TTrueReelHelper;->A20(Landroid/app/Activity;)V", "v0.9 orchestrator wired into A15"),
         (HELPER_DST, "invoke-direct {v0}, LX/TTrueReelRecheck;-><init>()V", "v0.9 listener constructed in A05"),
+        (HELPER_DST, "invoke-direct {v2, v6}, LX/TTrueReelTouch;-><init>(I)V", "v0.10 tap-spy constructed in A2G"),
+        (HELPER_DST, "invoke-direct {v3}, LX/TTrueReelTick;-><init>()V", "v0.10 tick constructed in A24"),
     ]
     for path, needle, label in checks:
         if needle in read(path):
