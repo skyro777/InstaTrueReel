@@ -598,7 +598,7 @@ def main():
         (HELPER_DST, "invoke-direct/range {v2 .. v7}", "helper v0.6 range-invoke arity correct"),
         (HELPER_DST, "0x7f0b3f45", "helper targets swipeable_tab_view_pager"),
         (HELPER_DST, "0x7f0b2246", "helper targets layout_container_main"),
-        (HELPER_DST, 'const-string v1, "InstaTrueReel v0.10.0: fullscreen ON"', "toast marker v0.10.0 present"),
+        (HELPER_DST, 'const-string v1, "InstaTrueReel v0.10.1: fullscreen ON"', "toast marker v0.10.1 present"),
         (HELPER_DST, 'v0.6 deblock eval: pager=', "v0.6 deblock eval diagnostics present"),
         (HELPER_DST, 'v0.7 liberate: chain freed (n=', "v0.7 liberation summary log present"),
         (HELPER_DST, 'v0.6 restore-layout: chain restored (n=', "v0.6 chain-restore log present"),
@@ -740,7 +740,7 @@ def main():
         (HELPER_DST, "v0.10 fs: landscape engaged (overlay player)", "v0.10 enter-landscape log present"),
         (HELPER_DST, "v0.10 fs: back to portrait", "v0.10 exit-landscape log present"),
         (HELPER_DST, "v0.10 fs: overlay player built", "v0.10 overlay-built log present"),
-        (HELPER_DST, "v0.10 fs: video adopted", "v0.10 video-adopted log present"),
+        (HELPER_DST, "v0.10.1 fs: video adopted", "v0.10.1 video-adopted log present"),
         (HELPER_DST, "v0.10 fs: auto-exit (portrait video swiped in)", "v0.10 auto-exit log present"),
         (HELPER_DST, "v0.10 fs: surface never materialized", "v0.10 surface sanity log present"),
         (HELPER_DST, "v0.9 fs: pill created", "v0.9 pill-created log present"),
@@ -751,6 +751,16 @@ def main():
         (HELPER_DST, "invoke-direct {v0}, LX/TTrueReelRecheck;-><init>()V", "v0.9 listener constructed in A05"),
         (HELPER_DST, "invoke-direct {v2, v6}, LX/TTrueReelTouch;-><init>(I)V", "v0.10 tap-spy constructed in A2G"),
         (HELPER_DST, "invoke-direct {v3}, LX/TTrueReelTick;-><init>()V", "v0.10 tick constructed in A24"),
+        # ---- v0.10.1 (phase 9.1): black-screen fix + detector hardening ----
+        (HELPER_DST, "fsAdoptAt:J", "v0.10.1 adopt-clock field present"),
+        (HELPER_DST, "invoke-virtual {v0, v1}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V", "v0.10.1 A2H detaches the video before adopting (black-screen fix)"),
+        (HELPER_DST, "if-eqz v1, :detached", "v0.10.1 A2J detaches from the overlay before restore"),
+        (HELPER_DST, "v0.10.1 fs: adoption failed - falling back to portrait", "v0.10.1 adopt-failure bail present"),
+        (HELPER_DST, "if-gez v2, :confirmed", "v0.10.1 page-confirm guard fires only after 350ms (inversion fixed)"),
+        (HELPER_DST, "sput-boolean v3, LX/TTrueReelHelper;->fsSanity:Z", "v0.10.1 swap re-arms the sanity window"),
+        (HELPER_DST, "v0.10.1 fs: page change - swapping video (landscape)", "v0.10.1 swap log present"),
+        (HELPER_DST, "v0.10.1 liberate: skipped (fs active)", "v0.10.1 portrait-surgery gate while fs active"),
+        (HELPER_DST, ":keep_adopt_state", "v0.10.1 stale adopt state cleared on failure"),
     ]
     for path, needle, label in checks:
         if needle in read(path):

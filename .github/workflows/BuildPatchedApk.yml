@@ -10,7 +10,7 @@ on:
       release_tag:
         description: 'Release tag to create/update (asset is uploaded with --clobber)'
         required: false
-        default: 'v0.10.0-phase9'
+        default: 'v0.10.1-phase9.1'
 
 env:
   APK_FILE: Instagram-v435.0.0.37.76-patches-v3.8.0.apk
@@ -104,7 +104,7 @@ jobs:
           check('classes16.dex', 'TTrueReelHelper', 'helper class defined')
           check('classes16.dex', 'TTrueReelReapply', 'reapply runnable present')
           check('classes16.dex', 'TTrueReelViewSave', 'v0.6 view-save state class present')
-          check('classes16.dex', 'InstaTrueReel v0.10.0', 'v0.10 toast marker present')
+          check('classes16.dex', 'InstaTrueReel v0.10.1', 'v0.10.1 toast marker present')
           check('classes16.dex', 'TTrueReelClick', 'v0.9 click listener class present')
           check('classes16.dex', 'TTrueReelRecheck', 'v0.9 recheck listener class present')
           check('classes16.dex', 'TTrueReelTouch', 'v0.10 tap-spy listener class present')
@@ -112,7 +112,10 @@ jobs:
           check('classes16.dex', 'TTrueReelTap', 'v0.10 delayed-tap class present')
           check('classes16.dex', 'v0.10 fs: landscape engaged (overlay player)', 'v0.10 overlay-player enter marker present')
           check('classes16.dex', 'v0.10 fs: overlay player built', 'v0.10 overlay builder marker present')
-          check('classes16.dex', 'v0.10 fs: video adopted', 'v0.10 video-adoption marker present')
+          check('classes16.dex', 'v0.10.1 fs: video adopted', 'v0.10.1 video-adoption marker present')
+          check('classes16.dex', 'v0.10.1 fs: adoption failed', 'v0.10.1 adopt-failure bail marker present')
+          check('classes16.dex', 'v0.10.1 liberate: skipped', 'v0.10.1 portrait-surgery gate marker present')
+          check('classes16.dex', 'fsAdoptAt', 'v0.10.1 adopt-clock field marker present')
           check('classes16.dex', 'v0.10 fs: auto-exit (portrait video swiped in)', 'v0.10 page-change auto-exit marker present')
           check('classes16.dex', 'v0.10 fs: back to portrait', 'v0.10 exit marker present')
           check('classes16.dex', 'v0.9 fs: portrait-lock blocked', 'v0.9.1 orientation-gate block log present')

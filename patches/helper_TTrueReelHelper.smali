@@ -68,6 +68,7 @@
 .field public static fsBest:Landroid/view/View;                # v0.9: DFS best (largest) video surface
 .field public static fsBestArea:I                              # v0.9: DFS best area (px^2)
 .field public static fsEngageAt:J                              # v0.9.1: uptimeMillis when landscape was engaged
+.field public static fsAdoptAt:J                               # v0.10.1: uptimeMillis when the video was last adopted (sanity clock)
 .field public static fsNonLand:I                               # v0.9.1: consecutive non-landscape detections (auto-exit debounce)
 
 
@@ -152,7 +153,7 @@
     invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->getActivity()Landroidx/fragment/app/FragmentActivity;
     move-result-object v0
     if-eqz v0, :cond_no_toast
-    const-string v1, "InstaTrueReel v0.10.0: fullscreen ON"
+    const-string v1, "InstaTrueReel v0.10.1: fullscreen ON"
     const/4 v2, 0x0
     invoke-static {v0, v1, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
     move-result-object v0
@@ -644,6 +645,18 @@
 
     :try_start_0
     if-eqz p0, :cond_done
+
+    # v0.10.1: while landscape fullscreen is active, skip the portrait layout
+    # surgery entirely — during v0.10 field tests these passes churned the
+    # fragment tree behind the overlay and fed burst triggers into the
+    # page-change detector on every reapply tick
+    sget-boolean v0, LX/TTrueReelHelper;->fsForced:Z
+    if-eqz v0, :fs_not_active
+    const-string v2, "InstaTrueReel"
+    const-string v4, "v0.10.1 liberate: skipped (fs active)"
+    invoke-static {v2, v4}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+    goto :cond_done
+    :fs_not_active
 
     sget-object v0, LX/TTrueReelHelper;->A0F:Landroidx/fragment/app/Fragment;
     if-eqz v0, :cond_no_frag
@@ -2568,6 +2581,7 @@
     invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
     move-result-wide v1
     sput-wide v1, LX/TTrueReelHelper;->fsEngageAt:J
+    sput-wide v1, LX/TTrueReelHelper;->fsAdoptAt:J
 
     # ---- rotate: SCREEN_ORIENTATION_SENSOR_LANDSCAPE ----
     const/4 v1, 0x6
@@ -3083,6 +3097,12 @@
     move-result-object v2
     sput-object v2, LX/TTrueReelHelper;->fsVideoParams:Landroid/view/ViewGroup$LayoutParams;
 
+    # v0.10.1: detach from the original parent BEFORE adopting into the
+    # overlay. v0.10 called addView without this and threw
+    # "IllegalStateException: child already has a parent" on EVERY adoption
+    # — the video stayed behind the opaque overlay: black screen + audio.
+    invoke-virtual {v0, v1}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V
+
     sget-object v2, LX/TTrueReelHelper;->fsOverlay:Landroid/widget/FrameLayout;
     new-instance v3, Landroid/widget/FrameLayout$LayoutParams;
     const/4 v4, -0x1
@@ -3090,6 +3110,11 @@
     invoke-direct {v3, v4, v0}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V
     const/4 v4, 0x0
     invoke-virtual {v2, v1, v4, v3}, Landroid/view/ViewGroup;->addView(Landroid/view/View;ILandroid/view/ViewGroup$LayoutParams;)V
+
+    # v0.10.1: adoption succeeded — arm the sanity clock from THIS moment
+    invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
+    move-result-wide v2
+    sput-wide v2, LX/TTrueReelHelper;->fsAdoptAt:J
 
     sput-object v1, LX/TTrueReelHelper;->fsVideo:Landroid/view/View;
     const/4 v2, 0x0
@@ -3103,7 +3128,7 @@
     const-string v2, "InstaTrueReel"
     new-instance v3, Ljava/lang/StringBuilder;
     invoke-direct {v3}, Ljava/lang/StringBuilder;-><init>()V
-    const-string v4, "v0.10 fs: video adopted ("
+    const-string v4, "v0.10.1 fs: video adopted ("
     invoke-virtual {v3, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     move-result-object v3
     invoke-virtual {v1}, Landroid/view/View;->getWidth()I
@@ -3139,8 +3164,16 @@
 
     :catch_0
     move-exception v0
+    # v0.10.1: nothing was adopted — drop the stale saved parent/params so a
+    # later restore can never try to re-parent a video we never took
+    sget-object v1, LX/TTrueReelHelper;->fsVideo:Landroid/view/View;
+    if-nez v1, :keep_adopt_state
+    const/4 v1, 0x0
+    sput-object v1, LX/TTrueReelHelper;->fsVideoParent:Landroid/view/ViewGroup;
+    sput-object v1, LX/TTrueReelHelper;->fsVideoParams:Landroid/view/ViewGroup$LayoutParams;
+    :keep_adopt_state
     const-string v1, "InstaTrueReel"
-    const-string v2, "v0.10 fs adopt: exception (recovered)"
+    const-string v2, "v0.10.1 fs adopt: exception (recovered)"
     invoke-static {v1, v2, v0}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I
     const/4 v0, 0x0
     return v0
@@ -3156,6 +3189,17 @@
     :try_start_0
     sget-object v0, LX/TTrueReelHelper;->fsVideo:Landroid/view/View;
     if-eqz v0, :ret
+
+    # v0.10.1: detach from the CURRENT parent (normally our overlay) FIRST.
+    # v0.10 re-added without removing, which would throw the same
+    # "child already has a parent" and fall through to the drop path,
+    # leaving the video attached to NO parent (black video after exit)
+    invoke-virtual {v0}, Landroid/view/View;->getParent()Landroid/view/ViewParent;
+    move-result-object v1
+    if-eqz v1, :detached
+    check-cast v1, Landroid/view/ViewGroup;
+    invoke-virtual {v1, v0}, Landroid/view/ViewGroup;->removeView(Landroid/view/View;)V
+    :detached
 
     sget-object v1, LX/TTrueReelHelper;->fsVideoParent:Landroid/view/ViewGroup;
     if-eqz v1, :drop
@@ -3255,7 +3299,7 @@
     if-nez v0, :likeflash
     invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
     move-result-wide v0
-    sget-wide v2, LX/TTrueReelHelper;->fsEngageAt:J
+    sget-wide v2, LX/TTrueReelHelper;->fsAdoptAt:J
     sub-long/2addr v0, v2
     const-wide/16 v2, 0x258
     cmp-long v4, v0, v2
@@ -3263,7 +3307,7 @@
     const/4 v0, 0x1
     sput-boolean v0, LX/TTrueReelHelper;->fsSanity:Z
     sget-object v0, LX/TTrueReelHelper;->fsVideo:Landroid/view/View;
-    if-eqz v0, :likeflash
+    if-eqz v0, :adopt_failed
     instance-of v1, v0, Landroid/view/TextureView;
     if-eqz v1, :likeflash
     check-cast v0, Landroid/view/TextureView;
@@ -3272,6 +3316,15 @@
     if-nez v1, :likeflash
     const-string v1, "InstaTrueReel"
     const-string v2, "v0.10 fs: surface never materialized - falling back to portrait"
+    invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+    invoke-static {}, LX/TTrueReelHelper;->A26()V
+    return-void
+
+    :adopt_failed
+    # v0.10.1: adoption never succeeded (fsVideo == null past the sanity
+    # window) — the overlay would sit on a black screen forever; bail out
+    const-string v1, "InstaTrueReel"
+    const-string v2, "v0.10.1 fs: adoption failed - falling back to portrait"
     invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
     invoke-static {}, LX/TTrueReelHelper;->A26()V
     return-void
@@ -3370,7 +3423,10 @@
     sub-long/2addr v4, v6
     const-wide/16 v6, 0x15e
     cmp-long v2, v4, v6
-    if-ltz v2, :confirmed
+    # v0.10.1: was if-ltz — INVERTED. It confirmed page changes only when the
+    # 2nd sighting was <350ms after the 1st (layout bursts, mid-swipe), while
+    # the steady 500ms tick could NEVER confirm. Confirm iff elapsed >= 350ms.
+    if-gez v2, :confirmed
 
     :first_sighting
     sput-object v1, LX/TTrueReelHelper;->fsNewSeen:Landroid/view/View;
@@ -3396,9 +3452,13 @@
     if-lez v3, :portrait_next
     # landscape next video -> swap adoptee, refresh title + rail
     const-string v3, "InstaTrueReel"
-    const-string v4, "v0.10 fs: page change - swapping video (landscape)"
+    const-string v4, "v0.10.1 fs: page change - swapping video (landscape)"
     invoke-static {v3, v4}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
     invoke-static {}, LX/TTrueReelHelper;->A2H()Z
+    # v0.10.1: re-arm the sanity window for the freshly adopted video (and
+    # self-heal: a failed swap adoption bails to portrait within ~1 tick)
+    const/4 v3, 0x0
+    sput-boolean v3, LX/TTrueReelHelper;->fsSanity:Z
     invoke-static {}, LX/TTrueReelHelper;->A2L()V
     invoke-static {}, LX/TTrueReelHelper;->A2M()V
     goto :clear_debounce
@@ -4036,6 +4096,9 @@
     sput v1, LX/TTrueReelHelper;->fsNonLand:I
     sput-boolean v1, LX/TTrueReelHelper;->fsPaused:Z
     sput-boolean v1, LX/TTrueReelHelper;->fsDebounced:Z
+    sput-boolean v1, LX/TTrueReelHelper;->fsSanity:Z
+    const-wide/16 v1, 0x0
+    sput-wide v1, LX/TTrueReelHelper;->fsAdoptAt:J
 
     # ---- back to portrait (DIRECT - bypasses the 6mW gate) ----
     sget-object v1, LX/TTrueReelHelper;->A09:Landroid/app/Activity;
