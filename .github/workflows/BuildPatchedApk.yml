@@ -10,7 +10,7 @@ on:
       release_tag:
         description: 'Release tag to create/update (asset is uploaded with --clobber)'
         required: false
-        default: 'v0.10.1-phase9.1'
+        default: 'v0.11.0-phase10'
 
 env:
   APK_FILE: Instagram-v435.0.0.37.76-patches-v3.8.0.apk
@@ -104,20 +104,27 @@ jobs:
           check('classes16.dex', 'TTrueReelHelper', 'helper class defined')
           check('classes16.dex', 'TTrueReelReapply', 'reapply runnable present')
           check('classes16.dex', 'TTrueReelViewSave', 'v0.6 view-save state class present')
-          check('classes16.dex', 'InstaTrueReel v0.10.1', 'v0.10.1 toast marker present')
+          check('classes16.dex', 'InstaTrueReel v0.11.0', 'v0.11.0 toast marker present')
           check('classes16.dex', 'TTrueReelClick', 'v0.9 click listener class present')
           check('classes16.dex', 'TTrueReelRecheck', 'v0.9 recheck listener class present')
           check('classes16.dex', 'TTrueReelTouch', 'v0.10 tap-spy listener class present')
           check('classes16.dex', 'TTrueReelTick', 'v0.10 landscape tick class present')
           check('classes16.dex', 'TTrueReelTap', 'v0.10 delayed-tap class present')
-          check('classes16.dex', 'v0.10 fs: landscape engaged (overlay player)', 'v0.10 overlay-player enter marker present')
-          check('classes16.dex', 'v0.10 fs: overlay player built', 'v0.10 overlay builder marker present')
+          check('classes16.dex', 'v0.11 fs: landscape engaged (player v2)', 'v0.11 player enter marker present')
+          check('classes16.dex', 'v0.11 fs: overlay player built (chrome v2)', 'v0.11 chrome builder marker present')
+          check('classes16.dex', 'TTrueReelScrub', 'v0.11 scrubber listener class present')
+          check('classes16.dex', 'TTrueReelAct', 'v0.11 post-exit action class present')
+          check('classes16.dex', 'v0.11 fs: like (direct)', 'v0.11 direct-like marker present')
+          check('classes16.dex', 'v0.11 fs: chrome shown', 'v0.11 chrome-show marker present')
+          check('classes16.dex', 'v0.11 fs: chrome hiding', 'v0.11 chrome-hide marker present')
+          check('classes16.dex', 'LX/2pL;->A03:', 'v0.11 player chain (listener->GrootPlayerImpl) present')
+          check('classes16.dex', 'LX/1c8;->A0A:', 'v0.11 player chain (impl->HeroPlayer) present')
           check('classes16.dex', 'v0.10.1 fs: video adopted', 'v0.10.1 video-adoption marker present')
           check('classes16.dex', 'v0.10.1 fs: adoption failed', 'v0.10.1 adopt-failure bail marker present')
           check('classes16.dex', 'v0.10.1 liberate: skipped', 'v0.10.1 portrait-surgery gate marker present')
           check('classes16.dex', 'fsAdoptAt', 'v0.10.1 adopt-clock field marker present')
           check('classes16.dex', 'v0.10 fs: auto-exit (portrait video swiped in)', 'v0.10 page-change auto-exit marker present')
-          check('classes16.dex', 'v0.10 fs: back to portrait', 'v0.10 exit marker present')
+          check('classes16.dex', 'v0.11 fs: back to portrait', 'v0.11 exit marker present')
           check('classes16.dex', 'v0.9 fs: portrait-lock blocked', 'v0.9.1 orientation-gate block log present')
           check('classes16.dex', 'v0.9 restore skipped (fs transient)', 'v0.9.1 transient-rotation guard present')
           check('classes16.dex', 'v0.9 hook: restore src=', 'v0.9.1 hook-source logging present')
@@ -162,7 +169,7 @@ jobs:
           TAG: ${{ github.event.inputs.release_tag }}
         run: |
           NOTES=$(cat <<'EON'
-          **InstaTrueReel v0.10.0 - THE OVERLAY PLAYER (phase 9: real TikTok
+          **InstaTrueReel v0.11.0 - THE PROPER PLAYER (phase 10: TikTok/YouTube-style chrome, working scrubber + actions)
           landscape fullscreen + Android 16 crash fix).**
 
           v0.9.x fought Instagram's portrait layout and lost (top black bar,
@@ -227,7 +234,7 @@ jobs:
       - name: Summary
         run: |
           {
-            echo "## InstaTrueReel Build (v0.10.0 — the overlay player)"
+            echo "## InstaTrueReel Build (v0.11.0 — the proper player)"
             echo ""
             echo "- Input: \`$APK_FILE\`"
             echo "- Output: \`$OUT_APK\` ($(ls -lh "$OUT_APK" 2>/dev/null | awk '{print $5}'))"

@@ -70,6 +70,20 @@
 .field public static fsEngageAt:J                              # v0.9.1: uptimeMillis when landscape was engaged
 .field public static fsAdoptAt:J                               # v0.10.1: uptimeMillis when the video was last adopted (sanity clock)
 .field public static fsNonLand:I                               # v0.9.1: consecutive non-landscape detections (auto-exit debounce)
+.field public static fsChromeOn:Z                                # v0.11: chrome (top/bottom/rail) visible
+.field public static fsDragging:Z                                 # v0.11: scrubber drag in progress
+.field public static fsHideAt:J                                   # v0.11: chrome auto-hide deadline (uptime ms)
+.field public static fsHidingAt:J                                 # v0.11: fade-out start time (GONE after 240ms)
+.field public static fsDurMs:J                                    # v0.11: last known video duration (ms)
+.field public static fsDurShown:J                                 # v0.11: duration already rendered on the label
+.field public static fsPlayingLast:Z                              # v0.11: last rendered playing state
+.field public static fsSeek:Landroid/widget/SeekBar;              # v0.11: scrubber
+.field public static fsTimeCur:Landroid/widget/TextView;          # v0.11: current time label
+.field public static fsTimeDur:Landroid/widget/TextView;          # v0.11: duration label
+.field public static fsPlayBtn:Landroid/widget/TextView;          # v0.11: bottom-bar play/pause button
+.field public static fsRail:Landroid/view/View;                   # v0.11: right action rail container
+.field public static fsBandTop:I                                  # v0.11: touch-forwarding band top (window y; -1 = none)
+.field public static fsBandH:I                                    # v0.11: touch-forwarding band height (px)
 
 
 # direct methods
@@ -153,7 +167,7 @@
     invoke-virtual {p0}, Landroidx/fragment/app/Fragment;->getActivity()Landroidx/fragment/app/FragmentActivity;
     move-result-object v0
     if-eqz v0, :cond_no_toast
-    const-string v1, "InstaTrueReel v0.10.1: fullscreen ON"
+    const-string v1, "InstaTrueReel v0.11.0: fullscreen ON"
     const/4 v2, 0x0
     invoke-static {v0, v1, v2}, Landroid/widget/Toast;->makeText(Landroid/content/Context;Ljava/lang/CharSequence;I)Landroid/widget/Toast;
     move-result-object v0
@@ -2560,7 +2574,7 @@
 # bottom action row). Taps pass through the center so Instagram's own gesture
 # pipeline still handles tap-to-pause and swipe-to-page.
 .method public static A24()V
-    .locals 4
+    .locals 6
 
     :try_start_0
     sget-boolean v0, LX/TTrueReelHelper;->A05:Z
@@ -2582,6 +2596,24 @@
     move-result-wide v1
     sput-wide v1, LX/TTrueReelHelper;->fsEngageAt:J
     sput-wide v1, LX/TTrueReelHelper;->fsAdoptAt:J
+
+    # ---- v0.11 player state ----
+    const/4 v1, 0x1
+    sput-boolean v1, LX/TTrueReelHelper;->fsChromeOn:Z
+    const/4 v1, 0x0
+    sput-boolean v1, LX/TTrueReelHelper;->fsDragging:Z
+    sput-boolean v1, LX/TTrueReelHelper;->fsPlayingLast:Z
+    const/4 v1, -0x1
+    sput v1, LX/TTrueReelHelper;->fsBandTop:I
+    const/4 v1, 0x0
+    sput v1, LX/TTrueReelHelper;->fsBandH:I
+    const-wide/16 v1, 0x0
+    sput-wide v1, LX/TTrueReelHelper;->fsHidingAt:J
+    sput-wide v1, LX/TTrueReelHelper;->fsDurMs:J
+    sput-wide v1, LX/TTrueReelHelper;->fsDurShown:J
+    const-wide/16 v3, 0xbb8
+    add-long/2addr v3, v1
+    sput-wide v3, LX/TTrueReelHelper;->fsHideAt:J
 
     # ---- rotate: SCREEN_ORIENTATION_SENSOR_LANDSCAPE ----
     const/4 v1, 0x6
@@ -2627,7 +2659,7 @@
     invoke-direct {v3}, LX/TTrueReelTick;-><init>()V
     sput-object v3, LX/TTrueReelHelper;->fsTick:Ljava/lang/Runnable;
     :have_tick
-    const-wide/16 v0, 0x1f4
+    const-wide/16 v0, 0xc8
     invoke-virtual {v2, v3, v0, v1}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
     # (result ignored)
 
@@ -2635,7 +2667,7 @@
     invoke-static {}, LX/TTrueReelHelper;->A05()V
 
     const-string v1, "InstaTrueReel"
-    const-string v2, "v0.10 fs: landscape engaged (overlay player)"
+    const-string v2, "v0.11 fs: landscape engaged (player v2)"
     invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
     :cond_done
@@ -2654,29 +2686,34 @@
 
 
 # ============================================================================
-# v0.10 (phase 9) — THE OVERLAY PLAYER (TikTok-style landscape fullscreen)
+# v0.11 (phase 10) — THE PROPER PLAYER (TikTok/YouTube-style chrome)
 #
-# v0.9/v0.9.1 tried to force Instagram's own portrait layout to relayout in
-# landscape — a losing battle (top black bar, floating chrome, spurious
-# auto-exits). v0.10 stops fighting: we ADOPT the video TextureView into our
-# own decor-level overlay (its SurfaceTextureListener — set by the Groot
-# video glue, X/1x5 via X/1j4.Ao2 — re-binds the surface on re-attach, so
-# playback continues), hide everything else behind an opaque root, and draw
-# the TikTok-style chrome ourselves:
-#   * top info bar: gradient, "‹" back (exit), title (username/caption)
-#   * center: big translucent play icon while paused
-#   * bottom bar: gradient, horizontal action row (like / comment / share)
-#   * tap-spy: transparent, NON-consuming touch observer over the video —
-#     taps + swipes fall through to Instagram's real gesture pipeline
-#     (tap-to-pause, double-tap-to-like, swipe-to-page all stay native)
-#   * edge blockers: swallow stray taps so nothing invisible below reacts
+# v0.10 proved the overlay-adoption architecture (video reparented into a
+# decor-level overlay; Groot's SurfaceTextureListener re-binds playback).
+# v0.11 rebuilds the chrome to the media3/TikTok reference spec:
+#   * top bar: slim 48dp row (back chevron + title) on a 45%->0 gradient
+#   * bottom bar: play/pause + timestamps + THIN SCRUBBER (3dp track,
+#     white progress, 12dp thumb) on a 0->55% gradient, wired to the
+#     HeroPlayer state machine (X/1cN via the TextureView's listener ->
+#     X/2pL.A03 -> X/1c8.A0A): position A0N, duration A0O, seek A04,
+#     pause A0Z, play A0S, isPlaying A0d — reparenting-safe, polled at
+#     200ms
+#   * right action rail: TikTok-style 48dp 40%-black circles (like /
+#     comment / share), driven DIRECTLY into Instagram's own pipelines
+#     (A8Q.Dkz / 9Wz.A1K / 9Wz.A1H — the exact entry points the real
+#     buttons use)
+#   * chrome auto-hides after 3s while playing (fade 220ms), tap toggles
+#     (double-tap filtered), persists while paused or scrubbing
+#   * tap spy CONSUMES + FORWARDS the touch stream into the fragment view
+#     (coordinates remapped into the portrait band behind the overlay),
+#     restoring native tap-to-pause / double-tap-to-like / swipe-to-page
 # ============================================================================
 
-# A2G(Landroid/app/Activity;)V == v0.10 build the overlay player chrome and
+# A2G(Landroid/app/Activity;)V == v0.11 build the overlay player chrome and
 # attach it to the window decor. The video view is inserted at index 0 by A2H
 # (below all chrome). Safe to call repeatedly (guards on fsOverlay).
 .method public static A2G(Landroid/app/Activity;)V
-    .locals 10
+    .locals 8
 
     :try_start_0
     sget-object v0, LX/TTrueReelHelper;->fsOverlay:Landroid/widget/FrameLayout;
@@ -2689,302 +2726,163 @@
     move-result-object v0
     if-eqz v0, :cond_done
     check-cast v0, Landroid/view/ViewGroup;
+    move-object v6, v0
 
     # ---- density ----
     invoke-virtual {p0}, Landroid/app/Activity;->getResources()Landroid/content/res/Resources;
-    move-result-object v1
-    invoke-virtual {v1}, Landroid/content/res/Resources;->getDisplayMetrics()Landroid/util/DisplayMetrics;
-    move-result-object v1
-    iget v3, v1, Landroid/util/DisplayMetrics;->density:F
+    move-result-object v0
+    invoke-virtual {v0}, Landroid/content/res/Resources;->getDisplayMetrics()Landroid/util/DisplayMetrics;
+    move-result-object v0
+    iget v7, v0, Landroid/util/DisplayMetrics;->density:F
 
     # ---- status-bar top inset (0 on failure) ----
-    const/4 v4, 0x0
-    invoke-virtual {v0}, Landroid/view/View;->getRootWindowInsets()Landroid/view/WindowInsets;
-    move-result-object v1
-    if-eqz v1, :no_insets
-    invoke-virtual {v1}, Landroid/view/WindowInsets;->getSystemWindowInsetTop()I
-    move-result v4
+    const/4 v3, 0x0
+    invoke-virtual {v6}, Landroid/view/View;->getRootWindowInsets()Landroid/view/WindowInsets;
+    move-result-object v0
+    if-eqz v0, :no_insets
+    invoke-virtual {v0}, Landroid/view/WindowInsets;->getSystemWindowInsetTop()I
+    move-result v3
     :no_insets
 
     # ---- root: opaque black fullscreen FrameLayout ----
     new-instance v5, Landroid/widget/FrameLayout;
     invoke-direct {v5, p0}, Landroid/widget/FrameLayout;-><init>(Landroid/content/Context;)V
-    const v1, -0x1000000
-    invoke-virtual {v5, v1}, Landroid/view/View;->setBackgroundColor(I)V
+    const v0, -0x1000000
+    invoke-virtual {v5, v0}, Landroid/view/View;->setBackgroundColor(I)V
+    new-instance v0, Landroid/widget/FrameLayout$LayoutParams;
+    const/4 v1, -0x1
+    const/4 v2, -0x1
+    invoke-direct {v0, v1, v2}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v5, v0}, Landroid/view/View;->setLayoutParams(Landroid/view/ViewGroup$LayoutParams;)V
+
+    # ---- tap spy: full-size, transparent, CONSUMING + forwarding (v0.11) ----
+    new-instance v0, Landroid/view/View;
+    invoke-direct {v0, p0}, Landroid/view/View;-><init>(Landroid/content/Context;)V
+    new-instance v1, LX/TTrueReelTouch;
+    const/4 v2, 0x0
+    invoke-direct {v1, v2}, LX/TTrueReelTouch;-><init>(I)V
+    invoke-virtual {v0, v1}, Landroid/view/View;->setOnTouchListener(Landroid/view/View$OnTouchListener;)V
     new-instance v1, Landroid/widget/FrameLayout$LayoutParams;
     const/4 v2, -0x1
-    const/4 v6, -0x1
-    invoke-direct {v1, v2, v6}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V
-    invoke-virtual {v5, v1}, Landroid/view/View;->setLayoutParams(Landroid/view/ViewGroup$LayoutParams;)V
+    const/4 v4, -0x1
+    invoke-direct {v1, v2, v4}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v5, v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    sput-object v0, LX/TTrueReelHelper;->fsTapSpy:Landroid/view/View;
 
-    # ---- tap spy: full-size, transparent, NON-consuming ----
-    new-instance v1, Landroid/view/View;
-    invoke-direct {v1, p0}, Landroid/view/View;-><init>(Landroid/content/Context;)V
-    new-instance v2, LX/TTrueReelTouch;
-    const/4 v6, 0x0
-    invoke-direct {v2, v6}, LX/TTrueReelTouch;-><init>(I)V
-    invoke-virtual {v1, v2}, Landroid/view/View;->setOnTouchListener(Landroid/view/View$OnTouchListener;)V
-    new-instance v2, Landroid/widget/FrameLayout$LayoutParams;
-    const/4 v6, -0x1
-    const/4 v7, -0x1
-    invoke-direct {v2, v6, v7}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V
-    invoke-virtual {v5, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-    sput-object v1, LX/TTrueReelHelper;->fsTapSpy:Landroid/view/View;
-
-    # ---- center play/pause indicator ----
-    new-instance v1, Landroid/widget/TextView;
-    invoke-direct {v1, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
-    const-string v2, "\u25b6"
-    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
-    const v2, -0x1
-    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTextColor(I)V
-    const/high16 v2, 0x47800000    # 64.0f
-    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTextSize(F)V
-    new-instance v2, Landroid/graphics/drawable/GradientDrawable;
-    invoke-direct {v2}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
-    const/4 v6, 0x1
-    invoke-virtual {v2, v6}, Landroid/graphics/drawable/GradientDrawable;->setShape(I)V
-    const v6, -0x67000000    # 0x99000000
-    invoke-virtual {v2, v6}, Landroid/graphics/drawable/GradientDrawable;->setColor(I)V
-    invoke-virtual {v1, v2}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V
-    const/high16 v2, 0x41c00000    # 24dp
-    mul-float/2addr v2, v3
-    float-to-int v2, v2
-    invoke-virtual {v1, v2, v2, v2, v2}, Landroid/view/View;->setPadding(IIII)V
-    new-instance v2, Landroid/widget/FrameLayout$LayoutParams;
-    const/4 v6, -0x2
-    const/4 v7, -0x2
-    const/16 v8, 0x11
-    invoke-direct {v2, v6, v7, v8}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
-    invoke-virtual {v5, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-    const/16 v2, 0x8
-    invoke-virtual {v1, v2}, Landroid/view/View;->setVisibility(I)V
-    sput-object v1, LX/TTrueReelHelper;->fsPlayIcon:Landroid/view/View;
-
-    # ---- top bar: gradient, back button, title ----
-    new-instance v1, Landroid/widget/LinearLayout;
-    invoke-direct {v1, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
-    new-instance v2, Landroid/graphics/drawable/GradientDrawable;
-    sget-object v6, Landroid/graphics/drawable/GradientDrawable$Orientation;->TOP_BOTTOM:Landroid/graphics/drawable/GradientDrawable$Orientation;
-    const v7, -0x34000000    # 0xCC000000
-    const/4 v8, 0x0
-    filled-new-array {v7, v8}, [I
-    move-result-object v7
-    invoke-direct {v2, v6, v7}, Landroid/graphics/drawable/GradientDrawable;-><init>(Landroid/graphics/drawable/GradientDrawable$Orientation;[I)V
-    invoke-virtual {v1, v2}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V
-    new-instance v2, Landroid/widget/FrameLayout$LayoutParams;
-    const/4 v6, -0x1
-    const/4 v7, -0x2
-    const/16 v8, 0x30
-    invoke-direct {v2, v6, v7, v8}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
-    invoke-virtual {v5, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-
-    # back button
-    new-instance v2, Landroid/widget/TextView;
-    invoke-direct {v2, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
-    const-string v6, "\u2039"
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
-    const v6, -0x1
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setTextColor(I)V
-    const/high16 v6, 0x42140000    # 36f
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setTextSize(F)V
-    sget-object v6, Landroid/graphics/Typeface;->DEFAULT_BOLD:Landroid/graphics/Typeface;
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setTypeface(Landroid/graphics/Typeface;)V
-    const/high16 v6, 0x41400000    # 12dp
-    mul-float/2addr v6, v3
-    float-to-int v6, v6
-    const/high16 v7, 0x40000000    # 2dp
-    mul-float/2addr v7, v3
-    float-to-int v7, v7
-    invoke-virtual {v2, v6, v7, v6, v7}, Landroid/view/View;->setPadding(IIII)V
-    new-instance v6, LX/TTrueReelClick;
-    const/4 v7, 0x2
-    invoke-direct {v6, v7}, LX/TTrueReelClick;-><init>(I)V
-    invoke-virtual {v2, v6}, Landroid/view/View;->setOnClickListener(Landroid/view/View$OnClickListener;)V
-    new-instance v6, Landroid/widget/LinearLayout$LayoutParams;
-    const/16 v7, -0x2
-    const/16 v8, -0x2
-    invoke-direct {v6, v7, v8}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
-    invoke-virtual {v1, v2, v6}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-
-    # title
-    new-instance v2, Landroid/widget/TextView;
-    invoke-direct {v2, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
-    const v6, -0x1
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setTextColor(I)V
-    const/high16 v6, 0x41700000    # 15f
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setTextSize(F)V
-    const/4 v6, 0x1
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setMaxLines(I)V
-    sget-object v6, Landroid/text/TextUtils$TruncateAt;->END:Landroid/text/TextUtils$TruncateAt;
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setEllipsize(Landroid/text/TextUtils$TruncateAt;)V
-    const-string v6, "Reels"
-    invoke-virtual {v2, v6}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
-    new-instance v6, Landroid/widget/LinearLayout$LayoutParams;
-    const/4 v7, 0x0
-    const/16 v8, -0x2
-    const/high16 v9, 0x3f800000    # 1.0f weight
-    invoke-direct {v6, v7, v8, v9}, Landroid/widget/LinearLayout$LayoutParams;-><init>(IIF)V
-    const/high16 v7, 0x41000000    # 8dp
-    mul-float/2addr v7, v3
-    float-to-int v7, v7
-    iput v7, v6, Landroid/view/ViewGroup$MarginLayoutParams;->leftMargin:I
-    iput v7, v6, Landroid/view/ViewGroup$MarginLayoutParams;->rightMargin:I
-    invoke-virtual {v1, v2, v6}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-    sput-object v2, LX/TTrueReelHelper;->fsTitle:Landroid/widget/TextView;
-
-    # top bar padding: 10dp sides, top = insetTop + 6dp, bottom 12dp
-    const/high16 v6, 0x41400000    # 12dp
-    mul-float/2addr v6, v3
-    float-to-int v6, v6
-    const/high16 v7, 0x40c00000    # 6dp
-    mul-float/2addr v7, v3
-    float-to-int v7, v7
-    add-int v7, v4, v7
-    const/high16 v8, 0x41200000    # 10dp
-    mul-float/2addr v8, v3
-    float-to-int v8, v8
-    invoke-virtual {v1, v8, v7, v8, v6}, Landroid/view/View;->setPadding(IIII)V
-    sput-object v1, LX/TTrueReelHelper;->fsTopBar:Landroid/view/View;
-
-    # ---- bottom bar: gradient + centered action row ----
-    new-instance v1, Landroid/widget/LinearLayout;
-    invoke-direct {v1, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
+    # ---- center play indicator (persistent while paused) ----
+    new-instance v0, Landroid/widget/TextView;
+    invoke-direct {v0, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+    const-string v1, "\u25b6\ufe0e"
+    invoke-virtual {v0, v1}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+    const v1, -0x1
+    invoke-virtual {v0, v1}, Landroid/widget/TextView;->setTextColor(I)V
+    const/high16 v1, 0x42200000    # 40sp
+    invoke-virtual {v0, v1}, Landroid/widget/TextView;->setTextSize(F)V
+    new-instance v1, Landroid/graphics/drawable/GradientDrawable;
+    invoke-direct {v1}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
     const/4 v2, 0x1
-    invoke-virtual {v1, v2}, Landroid/widget/LinearLayout;->setOrientation(I)V
-    new-instance v2, Landroid/graphics/drawable/GradientDrawable;
-    sget-object v6, Landroid/graphics/drawable/GradientDrawable$Orientation;->BOTTOM_TOP:Landroid/graphics/drawable/GradientDrawable$Orientation;
-    const/4 v7, 0x0
-    const v8, -0x34000000    # 0xCC000000
-    filled-new-array {v7, v8}, [I
-    move-result-object v7
-    invoke-direct {v2, v6, v7}, Landroid/graphics/drawable/GradientDrawable;-><init>(Landroid/graphics/drawable/GradientDrawable$Orientation;[I)V
-    invoke-virtual {v1, v2}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V
-    new-instance v2, Landroid/widget/FrameLayout$LayoutParams;
-    const/4 v6, -0x1
-    const/4 v7, -0x2
-    const/16 v8, 0x50
-    invoke-direct {v2, v6, v7, v8}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
-    invoke-virtual {v5, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-    sput-object v1, LX/TTrueReelHelper;->fsBottomBar:Landroid/view/View;
+    invoke-virtual {v1, v2}, Landroid/graphics/drawable/GradientDrawable;->setShape(I)V
+    const v2, 0x66000000    # 40% black
+    invoke-virtual {v1, v2}, Landroid/graphics/drawable/GradientDrawable;->setColor(I)V
+    invoke-virtual {v0, v1}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V
+    const/high16 v1, 0x41b00000    # 22dp
+    mul-float/2addr v1, v7
+    float-to-int v1, v1
+    invoke-virtual {v0, v1, v1, v1, v1}, Landroid/view/View;->setPadding(IIII)V
+    new-instance v1, Landroid/widget/FrameLayout$LayoutParams;
+    const/4 v2, -0x2
+    const/16 v4, 0x11
+    invoke-direct {v1, v2, v2, v4}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
+    invoke-virtual {v5, v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    const/16 v1, 0x8
+    invoke-virtual {v0, v1}, Landroid/view/View;->setVisibility(I)V
+    sput-object v0, LX/TTrueReelHelper;->fsPlayIcon:Landroid/view/View;
 
-    # action row
-    new-instance v1, Landroid/widget/LinearLayout;
-    invoke-direct {v1, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
-    const/16 v2, 0x1
-    invoke-virtual {v1, v2}, Landroid/widget/LinearLayout;->setGravity(I)V
-    new-instance v2, Landroid/widget/LinearLayout$LayoutParams;
-    const/4 v6, -0x1
-    const/4 v7, -0x2
-    invoke-direct {v2, v6, v7}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
-    sget-object v6, LX/TTrueReelHelper;->fsBottomBar:Landroid/view/View;
-    check-cast v6, Landroid/view/ViewGroup;
-    invoke-virtual {v6, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    # ---- top bar (A3F) ----
+    invoke-static {p0, v7, v3}, LX/TTrueReelHelper;->A3F(Landroid/content/Context;FI)Landroid/view/View;
+    move-result-object v0
+    new-instance v1, Landroid/widget/FrameLayout$LayoutParams;
+    const/4 v2, -0x1
+    const/4 v3, -0x2
+    const/16 v4, 0x30
+    invoke-direct {v1, v2, v3, v4}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
+    invoke-virtual {v5, v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
 
-    # like button
-    const-string v2, "\u2665"
-    const/4 v6, 0x3
-    invoke-static {p0, v2, v6, v3}, LX/TTrueReelHelper;->A2T(Landroid/content/Context;Ljava/lang/CharSequence;IF)Landroid/widget/TextView;
-    move-result-object v2
-    sput-object v2, LX/TTrueReelHelper;->fsLikeBtn:Landroid/widget/TextView;
-    new-instance v6, Landroid/widget/LinearLayout$LayoutParams;
-    const/16 v7, -0x2
-    const/16 v8, -0x2
-    invoke-direct {v6, v7, v8}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
-    const/high16 v7, 0x41600000    # 14dp
-    mul-float/2addr v7, v3
-    float-to-int v7, v7
-    iput v7, v6, Landroid/view/ViewGroup$MarginLayoutParams;->leftMargin:I
-    iput v7, v6, Landroid/view/ViewGroup$MarginLayoutParams;->rightMargin:I
-    invoke-virtual {v1, v2, v6}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-
-    # comment button
-    const-string v2, "\ud83d\udcac"
-    const/4 v6, 0x4
-    invoke-static {p0, v2, v6, v3}, LX/TTrueReelHelper;->A2T(Landroid/content/Context;Ljava/lang/CharSequence;IF)Landroid/widget/TextView;
-    move-result-object v2
-    new-instance v6, Landroid/widget/LinearLayout$LayoutParams;
-    const/16 v7, -0x2
-    const/16 v8, -0x2
-    invoke-direct {v6, v7, v8}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
-    const/high16 v7, 0x41600000
-    mul-float/2addr v7, v3
-    float-to-int v7, v7
-    iput v7, v6, Landroid/view/ViewGroup$MarginLayoutParams;->leftMargin:I
-    iput v7, v6, Landroid/view/ViewGroup$MarginLayoutParams;->rightMargin:I
-    invoke-virtual {v1, v2, v6}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-
-    # share button
-    const-string v2, "\u2197"
-    const/4 v6, 0x5
-    invoke-static {p0, v2, v6, v3}, LX/TTrueReelHelper;->A2T(Landroid/content/Context;Ljava/lang/CharSequence;IF)Landroid/widget/TextView;
-    move-result-object v2
-    new-instance v6, Landroid/widget/LinearLayout$LayoutParams;
-    const/16 v7, -0x2
-    const/16 v8, -0x2
-    invoke-direct {v6, v7, v8}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
-    const/high16 v7, 0x41600000
-    mul-float/2addr v7, v3
-    float-to-int v7, v7
-    iput v7, v6, Landroid/view/ViewGroup$MarginLayoutParams;->leftMargin:I
-    iput v7, v6, Landroid/view/ViewGroup$MarginLayoutParams;->rightMargin:I
-    invoke-virtual {v1, v2, v6}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-
-    # bottom bar padding: 10dp, bottom += nav inset
-    invoke-virtual {v0}, Landroid/view/View;->getRootWindowInsets()Landroid/view/WindowInsets;
-    move-result-object v2
-    const/4 v6, 0x0
-    if-eqz v2, :no_binsets
-    invoke-virtual {v2}, Landroid/view/WindowInsets;->getSystemWindowInsetBottom()I
-    move-result v6
+    # ---- bottom bar (A3G) ----
+    const/4 v3, 0x0
+    invoke-virtual {v6}, Landroid/view/View;->getRootWindowInsets()Landroid/view/WindowInsets;
+    move-result-object v0
+    if-eqz v0, :no_binsets
+    invoke-virtual {v0}, Landroid/view/WindowInsets;->getSystemWindowInsetBottom()I
+    move-result v3
     :no_binsets
-    const/high16 v2, 0x41200000    # 10dp
-    mul-float/2addr v2, v3
+    invoke-static {p0, v7, v3}, LX/TTrueReelHelper;->A3G(Landroid/content/Context;FI)Landroid/view/View;
+    move-result-object v0
+    new-instance v1, Landroid/widget/FrameLayout$LayoutParams;
+    const/4 v2, -0x1
+    const/4 v3, -0x2
+    const/16 v4, 0x50
+    invoke-direct {v1, v2, v3, v4}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
+    invoke-virtual {v5, v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+
+    # ---- right action rail (A3H) ----
+    invoke-static {p0, v7}, LX/TTrueReelHelper;->A3H(Landroid/content/Context;F)Landroid/view/View;
+    move-result-object v0
+    new-instance v1, Landroid/widget/FrameLayout$LayoutParams;
+    const/4 v2, -0x2
+    const/4 v3, -0x2
+    const v4, 0x800053          # BOTTOM|END
+    invoke-direct {v1, v2, v3, v4}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
+    const/high16 v2, 0x41400000    # 12dp end margin
+    mul-float/2addr v2, v7
     float-to-int v2, v2
-    add-int v6, v6, v2
-    sget-object v7, LX/TTrueReelHelper;->fsBottomBar:Landroid/view/View;
-    invoke-virtual {v7, v2, v2, v2, v6}, Landroid/view/View;->setPadding(IIII)V
+    iput v2, v1, Landroid/view/ViewGroup$MarginLayoutParams;->rightMargin:I
+    const/high16 v2, 0x42900000    # 72dp bottom margin (clears the bottom bar)
+    mul-float/2addr v2, v7
+    float-to-int v2, v2
+    iput v2, v1, Landroid/view/ViewGroup$MarginLayoutParams;->bottomMargin:I
+    invoke-virtual {v5, v0, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
 
     # ---- edge blockers ----
-    new-instance v1, Landroid/view/View;
-    invoke-direct {v1, p0}, Landroid/view/View;-><init>(Landroid/content/Context;)V
-    const/4 v2, 0x1
-    invoke-virtual {v1, v2}, Landroid/view/View;->setClickable(Z)V
-    const/high16 v2, 0x42300000    # 44dp
-    mul-float/2addr v2, v3
-    float-to-int v2, v2
-    new-instance v6, Landroid/widget/FrameLayout$LayoutParams;
-    const/4 v7, -0x1
-    const/16 v8, 0x3
-    invoke-direct {v6, v2, v7, v8}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
-    invoke-virtual {v5, v1, v6}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-    sput-object v1, LX/TTrueReelHelper;->fsBlockL:Landroid/view/View;
+    new-instance v0, Landroid/view/View;
+    invoke-direct {v0, p0}, Landroid/view/View;-><init>(Landroid/content/Context;)V
+    const/4 v1, 0x1
+    invoke-virtual {v0, v1}, Landroid/view/View;->setClickable(Z)V
+    const/high16 v1, 0x42300000    # 44dp
+    mul-float/2addr v1, v7
+    float-to-int v1, v1
+    new-instance v2, Landroid/widget/FrameLayout$LayoutParams;
+    const/4 v3, -0x1
+    const/4 v4, 0x3
+    invoke-direct {v2, v1, v3, v4}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
+    invoke-virtual {v5, v0, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    sput-object v0, LX/TTrueReelHelper;->fsBlockL:Landroid/view/View;
 
-    new-instance v1, Landroid/view/View;
-    invoke-direct {v1, p0}, Landroid/view/View;-><init>(Landroid/content/Context;)V
-    const/4 v2, 0x1
-    invoke-virtual {v1, v2}, Landroid/view/View;->setClickable(Z)V
-    const/high16 v2, 0x42300000    # 44dp
-    mul-float/2addr v2, v3
-    float-to-int v2, v2
-    new-instance v6, Landroid/widget/FrameLayout$LayoutParams;
-    const/4 v7, -0x1
-    const/16 v8, 0x5
-    invoke-direct {v6, v2, v7, v8}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
-    invoke-virtual {v5, v1, v6}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
-    sput-object v1, LX/TTrueReelHelper;->fsBlockR:Landroid/view/View;
+    new-instance v0, Landroid/view/View;
+    invoke-direct {v0, p0}, Landroid/view/View;-><init>(Landroid/content/Context;)V
+    const/4 v1, 0x1
+    invoke-virtual {v0, v1}, Landroid/view/View;->setClickable(Z)V
+    const/high16 v1, 0x42300000    # 44dp
+    mul-float/2addr v1, v7
+    float-to-int v1, v1
+    new-instance v2, Landroid/widget/FrameLayout$LayoutParams;
+    const/4 v3, -0x1
+    const/4 v4, 0x5
+    invoke-direct {v2, v1, v3, v4}, Landroid/widget/FrameLayout$LayoutParams;-><init>(III)V
+    invoke-virtual {v5, v0, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    sput-object v0, LX/TTrueReelHelper;->fsBlockR:Landroid/view/View;
 
     # ---- attach to decor ----
-    new-instance v1, Landroid/widget/FrameLayout$LayoutParams;
+    new-instance v0, Landroid/widget/FrameLayout$LayoutParams;
+    const/4 v1, -0x1
     const/4 v2, -0x1
-    const/4 v6, -0x1
-    invoke-direct {v1, v2, v6}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V
-    invoke-virtual {v0, v5, v1}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    invoke-direct {v0, v1, v2}, Landroid/widget/FrameLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v6, v5, v0}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
     sput-object v5, LX/TTrueReelHelper;->fsOverlay:Landroid/widget/FrameLayout;
 
-    const-string v1, "InstaTrueReel"
-    const-string v2, "v0.10 fs: overlay player built"
-    invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+    const-string v0, "InstaTrueReel"
+    const-string v1, "v0.11 fs: overlay player built (chrome v2)"
+    invoke-static {v0, v1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
     :cond_done
     :try_end_0
@@ -2995,10 +2893,11 @@
     :catch_0
     move-exception v0
     const-string v1, "InstaTrueReel"
-    const-string v2, "v0.10 fs build: exception (recovered)"
+    const-string v2, "v0.11 fs build: exception (recovered)"
     invoke-static {v1, v2, v0}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;Ljava/lang/Throwable;)I
     return-void
 .end method
+
 
 
 # A2T(Context;CharSequence;IF)TextView == v0.10 action-button factory:
@@ -3014,18 +2913,18 @@
     invoke-virtual {v0, p1}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
     const v1, -0x1
     invoke-virtual {v0, v1}, Landroid/widget/TextView;->setTextColor(I)V
-    const/high16 v1, 0x41a00000    # 20f
+    const/high16 v1, 0x41b00000    # 22f
     invoke-virtual {v0, v1}, Landroid/widget/TextView;->setTextSize(F)V
 
     new-instance v1, Landroid/graphics/drawable/GradientDrawable;
     invoke-direct {v1}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
     const/4 v2, 0x1
     invoke-virtual {v1, v2}, Landroid/graphics/drawable/GradientDrawable;->setShape(I)V
-    const v2, -0x67000000    # 0x99000000
+    const v2, 0x66000000    # 40% black (v0.11 TikTok-rail spec)
     invoke-virtual {v1, v2}, Landroid/graphics/drawable/GradientDrawable;->setColor(I)V
     invoke-virtual {v0, v1}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V
 
-    const/high16 v1, 0x41200000    # 10dp
+    const/high16 v1, 0x41500000    # 13dp (48dp touch circle)
     mul-float/2addr v1, p3
     float-to-int v1, v1
     invoke-virtual {v0, v1, v1, v1, v1}, Landroid/view/View;->setPadding(IIII)V
@@ -3266,6 +3165,10 @@
     :try_start_0
     sget-boolean v0, LX/TTrueReelHelper;->fsForced:Z
     if-eqz v0, :ret
+
+    # ---- v0.11: forwarding band capture + scrubber/chrome housekeeping ----
+    invoke-static {}, LX/TTrueReelHelper;->A3E()V
+    invoke-static {}, LX/TTrueReelHelper;->A36()V
 
     # ---- 1. re-assert video geometry ----
     sget-object v0, LX/TTrueReelHelper;->fsVideo:Landroid/view/View;
@@ -3855,44 +3758,52 @@
 # does not check visibility). Falls back to performClick() if the touch
 # sequence is not consumed.
 .method public static A2P(Landroid/view/View;)V
-    .locals 9
+    .locals 10
 
     :try_start_0
     if-eqz p0, :ret
 
     invoke-virtual {p0}, Landroid/view/View;->getWidth()I
-    move-result v0
-    if-lez v0, :ret
+    move-result v8
+    if-lez v8, :ret
     invoke-virtual {p0}, Landroid/view/View;->getHeight()I
-    move-result v1
-    if-lez v1, :ret
+    move-result v8
+    if-lez v8, :ret
 
-    # ---- register plan (all 8 obtain args must sit consecutively): ----
-    # v0 = x (F), v1 = y (F), v2/v3 = downTime (J), v4/v5 = eventTime (J),
-    # v6 = action (I), v7 = metaState (I)
+    # ---- register plan (args must sit consecutively v0..v7): ----
+    # v0/v1 = downTime (J), v2/v3 = eventTime (J), v4 = action (I),
+    # v5 = x (F), v6 = y (F), v7 = metaState (I), v8/v9 = scratch
+    # v0.11: the v0.10 plan was shifted two slots (x/y in v0/v1, longs in
+    # v2-v5) — Android 16's verifier hard-rejects (v0 Float where Long-low
+    # required) and Android 10 dispatched garbage action codes -> dead taps.
     invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
-    move-result-wide v2
-    move-wide v4, v2
-    const-wide/16 v6, 0x30
-    add-long/2addr v4, v6          # eventTime = downTime + 48ms
+    move-result-wide v0
+    move-wide v2, v0
+    const-wide/16 v8, 0x30
+    add-long/2addr v2, v8          # eventTime = downTime + 48ms
 
-    int-to-float v0, v0
-    const/high16 v6, 0x40000000    # 2.0f
-    div-float/2addr v0, v6         # x = width / 2
-    int-to-float v1, v1
-    div-float/2addr v1, v6         # y = height / 2
+    invoke-virtual {p0}, Landroid/view/View;->getWidth()I
+    move-result v8
+    int-to-float v5, v8
+    const/high16 v8, 0x40000000    # 2.0f
+    div-float/2addr v5, v8         # x = width / 2
+    invoke-virtual {p0}, Landroid/view/View;->getHeight()I
+    move-result v8
+    int-to-float v6, v8
+    const/high16 v8, 0x40000000
+    div-float/2addr v6, v8         # y = height / 2
 
     # ---- DOWN ----
-    const/4 v6, 0x0
+    const/4 v4, 0x0
     const/4 v7, 0x0
     invoke-static/range {v0 .. v7}, Landroid/view/MotionEvent;->obtain(JJIFFI)Landroid/view/MotionEvent;
     move-result-object v8
     invoke-virtual {p0, v8}, Landroid/view/View;->dispatchTouchEvent(Landroid/view/MotionEvent;)Z
-    move-result v6
+    move-result v4
     invoke-virtual {v8}, Landroid/view/MotionEvent;->recycle()V
 
     # ---- UP ----
-    const/16 v6, 0x1
+    const/4 v4, 0x1
     const/4 v7, 0x0
     invoke-static/range {v0 .. v7}, Landroid/view/MotionEvent;->obtain(JJIFFI)Landroid/view/MotionEvent;
     move-result-object v8
@@ -3900,8 +3811,8 @@
     move-result v7
     invoke-virtual {v8}, Landroid/view/MotionEvent;->recycle()V
 
-    or-int/2addr v6, v7
-    if-nez v6, :ret
+    or-int/2addr v4, v7
+    if-nez v4, :ret
     invoke-virtual {p0}, Landroid/view/View;->performClick()V
 
     :ret
@@ -3918,31 +3829,40 @@
 
 # A2Q()V == v0.10 LIKE from the landscape action row: synthesize a tap on the
 # real (hidden) rail like-button and flash our own heart red for 700ms.
+# A2Q()V == v0.11 LIKE from the landscape rail: DIRECT call into Instagram's
+# own like pipeline (A8Q.Dkz — byte-identical to the real button click), heart
+# flashes red for 700ms. Falls back to a (now fixed) synthetic tap on the real
+# rail button when the direct path is unavailable.
 .method public static A2Q()V
     .locals 4
 
     :try_start_0
-    sget-object v0, LX/TTrueReelHelper;->fsRailLike:Landroid/view/View;
-    if-eqz v0, :refind
-    goto :tap
-    :refind
-    invoke-static {}, LX/TTrueReelHelper;->A2M()V
-    sget-object v0, LX/TTrueReelHelper;->fsRailLike:Landroid/view/View;
-    if-eqz v0, :ret
-
-    :tap
-    invoke-static {v0}, LX/TTrueReelHelper;->A2P(Landroid/view/View;)V
+    # heart flash feedback (both paths)
     invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
     move-result-wide v0
     sput-wide v0, LX/TTrueReelHelper;->fsLikeFlash:J
     sget-object v2, LX/TTrueReelHelper;->fsLikeBtn:Landroid/widget/TextView;
     if-eqz v2, :logged
-    const v3, -0xc4b2      # 0xFFFF3B4E heart red
+    const v3, -0xc4b2
     invoke-virtual {v2, v3}, Landroid/widget/TextView;->setTextColor(I)V
 
     :logged
+    invoke-static {}, LX/TTrueReelHelper;->A3D()Z
+    move-result v0
+    if-eqz v0, :fallback
+
     const-string v2, "InstaTrueReel"
-    const-string v3, "v0.10 fs: like dispatched"
+    const-string v3, "v0.11 fs: like (direct)"
+    invoke-static {v2, v3}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+    return-void
+
+    :fallback
+    invoke-static {}, LX/TTrueReelHelper;->A2M()V
+    sget-object v0, LX/TTrueReelHelper;->fsRailLike:Landroid/view/View;
+    if-eqz v0, :ret
+    invoke-static {v0}, LX/TTrueReelHelper;->A2P(Landroid/view/View;)V
+    const-string v2, "InstaTrueReel"
+    const-string v3, "v0.11 fs: like (rail tap fallback)"
     invoke-static {v2, v3}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
     :ret
@@ -3957,13 +3877,45 @@
 .end method
 
 
+
 # A2R()V == v0.10 COMMENT from the landscape action row: leave landscape
 # first (the comment sheet is a portrait bottom sheet that would open behind
 # our overlay), then dispatch the tap on the real comment button.
+# A2R()V == v0.11 COMMENT: exit landscape, then open Instagram's own comment
+# sheet DIRECTLY (9Wz.A1K — the fragment's own comment-button entry). Falls
+# back to a delayed synthetic tap on the real comment button.
 .method public static A2R()V
-    .locals 3
+    .locals 6
 
     :try_start_0
+    invoke-static {}, LX/TTrueReelHelper;->A3B()LX/1j0;
+    move-result-object v0
+    if-eqz v0, :fallback
+    sget-object v1, LX/TTrueReelHelper;->A0F:Landroidx/fragment/app/Fragment;
+    if-eqz v1, :fallback
+    instance-of v2, v1, LX/9Wz;
+    if-eqz v2, :fallback
+    invoke-static {}, LX/TTrueReelHelper;->A3C()LX/11R;
+    move-result-object v2
+
+    # exit landscape first (the comment sheet is a portrait bottom sheet)
+    invoke-static {}, LX/TTrueReelHelper;->A26()V
+
+    new-instance v3, LX/TTrueReelAct;
+    const/4 v4, 0x4
+    move-object v5, v1
+    invoke-direct {v3, v4, v0, v2, v5}, LX/TTrueReelAct;-><init>(ILX/1j0;LX/11R;Landroidx/fragment/app/Fragment;)V
+    sget-object v4, LX/TTrueReelHelper;->fsHandler:Landroid/os/Handler;
+    if-eqz v4, :fallback
+    const-wide/16 v0, 0x190
+    invoke-virtual {v4, v3, v0, v1}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
+
+    const-string v1, "InstaTrueReel"
+    const-string v2, "v0.11 fs: comment (direct, posted)"
+    invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+    return-void
+
+    :fallback
     sget-object v0, LX/TTrueReelHelper;->fsRailComment:Landroid/view/View;
     if-eqz v0, :refind
     goto :exit
@@ -3976,7 +3928,9 @@
     invoke-static {}, LX/TTrueReelHelper;->A26()V
     const-wide/16 v1, 0x190
     invoke-static {v0, v1, v2}, LX/TTrueReelHelper;->A2U(Landroid/view/View;J)V
-    return-void
+    const-string v1, "InstaTrueReel"
+    const-string v2, "v0.11 fs: comment (rail tap fallback)"
+    invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
     :ret
     :try_end_0
@@ -3988,14 +3942,46 @@
     move-exception v0
     return-void
 .end method
+
 
 
 # A2S()V == v0.10 SHARE from the landscape action row: leave landscape first
 # (share sheet is a portrait bottom sheet), then dispatch the tap.
+# A2S()V == v0.11 SHARE: exit landscape, then open Instagram's own share sheet
+# DIRECTLY (9Wz.A1H — the fragment's share-button entry). Falls back to a
+# delayed synthetic tap on the real share button.
 .method public static A2S()V
-    .locals 3
+    .locals 6
 
     :try_start_0
+    invoke-static {}, LX/TTrueReelHelper;->A3B()LX/1j0;
+    move-result-object v0
+    if-eqz v0, :fallback
+    sget-object v1, LX/TTrueReelHelper;->A0F:Landroidx/fragment/app/Fragment;
+    if-eqz v1, :fallback
+    instance-of v2, v1, LX/9Wz;
+    if-eqz v2, :fallback
+    invoke-static {}, LX/TTrueReelHelper;->A3C()LX/11R;
+    move-result-object v2
+
+    # exit landscape first (the share sheet is a portrait bottom sheet)
+    invoke-static {}, LX/TTrueReelHelper;->A26()V
+
+    new-instance v3, LX/TTrueReelAct;
+    const/4 v4, 0x5
+    move-object v5, v1
+    invoke-direct {v3, v4, v0, v2, v5}, LX/TTrueReelAct;-><init>(ILX/1j0;LX/11R;Landroidx/fragment/app/Fragment;)V
+    sget-object v4, LX/TTrueReelHelper;->fsHandler:Landroid/os/Handler;
+    if-eqz v4, :fallback
+    const-wide/16 v0, 0x190
+    invoke-virtual {v4, v3, v0, v1}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
+
+    const-string v1, "InstaTrueReel"
+    const-string v2, "v0.11 fs: share (direct, posted)"
+    invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+    return-void
+
+    :fallback
     sget-object v0, LX/TTrueReelHelper;->fsRailShare:Landroid/view/View;
     if-eqz v0, :refind
     goto :exit
@@ -4008,7 +3994,9 @@
     invoke-static {}, LX/TTrueReelHelper;->A26()V
     const-wide/16 v1, 0x190
     invoke-static {v0, v1, v2}, LX/TTrueReelHelper;->A2U(Landroid/view/View;J)V
-    return-void
+    const-string v1, "InstaTrueReel"
+    const-string v2, "v0.11 fs: share (rail tap fallback)"
+    invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
     :ret
     :try_end_0
@@ -4020,6 +4008,7 @@
     move-exception v0
     return-void
 .end method
+
 
 
 # A2U(Landroid/view/View;J)V == v0.10 post a delayed synthetic tap on the
@@ -4042,6 +4031,1072 @@
     :catch_0
     move-exception v0
     return-void
+.end method
+
+
+# A30()LX/1cN; == v0.11 resolve the HeroPlayer state machine from the adopted
+# TextureView (reparenting-safe): getSurfaceTextureListener -> 2pL.A03 (the
+# owning GrootPlayerImpl 1c8) -> 1c8.A0A (1cN). Null on any broken link.
+.method public static A30()LX/1cN;
+    .locals 2
+
+    :try_start_0
+    sget-object v0, LX/TTrueReelHelper;->fsVideo:Landroid/view/View;
+    if-eqz v0, :ret_null
+    instance-of v1, v0, Landroid/view/TextureView;
+    if-eqz v1, :ret_null
+    check-cast v0, Landroid/view/TextureView;
+    invoke-virtual {v0}, Landroid/view/TextureView;->getSurfaceTextureListener()Landroid/view/TextureView$SurfaceTextureListener;
+    move-result-object v0
+    if-eqz v0, :ret_null
+    instance-of v1, v0, LX/2pL;
+    if-eqz v1, :ret_null
+    check-cast v0, LX/2pL;
+    iget-object v0, v0, LX/2pL;->A03:LX/1c8;
+    if-eqz v0, :ret_null
+    iget-object v0, v0, LX/1c8;->A0A:LX/1cN;
+    return-object v0
+
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    :ret_null
+    const/4 v0, 0x0
+    return-object v0
+
+    :catch_0
+    move-exception v0
+    const/4 v0, 0x0
+    return-object v0
+.end method
+
+
+# A31()V == v0.11 play/pause toggle (bottom-bar button + optimistically
+# synced UI): HeroPlayer pause(trigger)/play, then mirror the state onto the
+# center indicator + the button glyph (the 200ms tick re-syncs from A0d()).
+.method public static A31()V
+    .locals 4
+
+    :try_start_0
+    invoke-static {}, LX/TTrueReelHelper;->A30()LX/1cN;
+    move-result-object v0
+    if-eqz v0, :ret
+    invoke-virtual {v0}, LX/1cN;->A0d()Z
+    move-result v1
+    if-eqz v1, :was_paused
+    const-string v2, "instatruereel"
+    invoke-virtual {v0, v2}, LX/1cN;->A0Z(Ljava/lang/String;)V
+    const/4 v1, 0x0
+    goto :update_ui
+    :was_paused
+    invoke-virtual {v0}, LX/1cN;->A0S()V
+    const/4 v1, 0x1
+    :update_ui
+    sput-boolean v1, LX/TTrueReelHelper;->fsPlayingLast:Z
+    sget-object v2, LX/TTrueReelHelper;->fsPlayIcon:Landroid/view/View;
+    if-eqz v2, :no_icon
+    if-nez v1, :icon_hide
+    const/4 v3, 0x0
+    goto :icon_set
+    :icon_hide
+    const/16 v3, 0x8
+    :icon_set
+    invoke-virtual {v2, v3}, Landroid/view/View;->setVisibility(I)V
+    :no_icon
+    sget-object v2, LX/TTrueReelHelper;->fsPlayBtn:Landroid/widget/TextView;
+    if-eqz v2, :ret
+    if-nez v1, :btn_play
+    const-string v3, "\u2016"
+    goto :btn_set
+    :btn_play
+    const-string v3, "\u25b6\ufe0e"
+    :btn_set
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+
+    :ret
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+    return-void
+.end method
+
+
+# A32()V == v0.11 toggle the chrome (top bar + bottom bar + rail) as one
+# unit: show = VISIBLE + 150ms alpha fade-in + re-arm the 3s auto-hide;
+# hide = delegate to A34 (220ms fade-out, GONE via the tick after 240ms).
+.method public static A32()V
+    .locals 5
+
+    :try_start_0
+    sget-boolean v0, LX/TTrueReelHelper;->fsChromeOn:Z
+    if-eqz v0, :do_show
+
+    invoke-static {}, LX/TTrueReelHelper;->A34()V
+    return-void
+
+    :do_show
+    const-wide/16 v0, 0x0
+    sput-wide v0, LX/TTrueReelHelper;->fsHidingAt:J
+    const/4 v0, 0x1
+    sput-boolean v0, LX/TTrueReelHelper;->fsChromeOn:Z
+
+    sget-object v1, LX/TTrueReelHelper;->fsTopBar:Landroid/view/View;
+    if-eqz v1, :no_top
+    const/4 v2, 0x0
+    invoke-virtual {v1, v2}, Landroid/view/View;->setVisibility(I)V
+    invoke-virtual {v1}, Landroid/view/View;->animate()Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const/high16 v3, 0x3f800000    # 1.0f
+    invoke-virtual {v2, v3}, Landroid/view/ViewPropertyAnimator;->alpha(F)Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const-wide/16 v3, 0x96         # 150ms
+    invoke-virtual {v2, v3, v4}, Landroid/view/ViewPropertyAnimator;->setDuration(J)Landroid/view/ViewPropertyAnimator;
+    :no_top
+
+    sget-object v1, LX/TTrueReelHelper;->fsBottomBar:Landroid/view/View;
+    if-eqz v1, :no_bottom
+    const/4 v2, 0x0
+    invoke-virtual {v1, v2}, Landroid/view/View;->setVisibility(I)V
+    invoke-virtual {v1}, Landroid/view/View;->animate()Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const/high16 v3, 0x3f800000    # 1.0f
+    invoke-virtual {v2, v3}, Landroid/view/ViewPropertyAnimator;->alpha(F)Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const-wide/16 v3, 0x96         # 150ms
+    invoke-virtual {v2, v3, v4}, Landroid/view/ViewPropertyAnimator;->setDuration(J)Landroid/view/ViewPropertyAnimator;
+    :no_bottom
+
+    sget-object v1, LX/TTrueReelHelper;->fsRail:Landroid/view/View;
+    if-eqz v1, :no_rail
+    const/4 v2, 0x0
+    invoke-virtual {v1, v2}, Landroid/view/View;->setVisibility(I)V
+    invoke-virtual {v1}, Landroid/view/View;->animate()Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const/high16 v3, 0x3f800000    # 1.0f
+    invoke-virtual {v2, v3}, Landroid/view/ViewPropertyAnimator;->alpha(F)Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const-wide/16 v3, 0x96         # 150ms
+    invoke-virtual {v2, v3, v4}, Landroid/view/ViewPropertyAnimator;->setDuration(J)Landroid/view/ViewPropertyAnimator;
+    :no_rail
+
+    invoke-static {}, LX/TTrueReelHelper;->A33()V
+
+    const-string v1, "InstaTrueReel"
+    const-string v2, "v0.11 fs: chrome shown"
+    invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+    return-void
+.end method
+
+
+# A33()V == v0.11 arm the chrome auto-hide deadline (now + 3000ms).
+.method public static A33()V
+    .locals 4
+
+    invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
+    move-result-wide v0
+    const-wide/16 v2, 0xbb8         # 3000ms
+    add-long/2addr v0, v2
+    sput-wide v0, LX/TTrueReelHelper;->fsHideAt:J
+
+    return-void
+.end method
+
+
+# A34()V == v0.11 start hiding the chrome: 220ms alpha fade-out on all three
+# bars; the 200ms tick applies GONE 240ms later (alpha-0 views still receive
+# touches, so they must go away for the video area to own the full screen).
+.method public static A34()V
+    .locals 5
+
+    :try_start_0
+    const/4 v0, 0x0
+    sput-boolean v0, LX/TTrueReelHelper;->fsChromeOn:Z
+    invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
+    move-result-wide v0
+    sput-wide v0, LX/TTrueReelHelper;->fsHidingAt:J
+
+    sget-object v2, LX/TTrueReelHelper;->fsTopBar:Landroid/view/View;
+    if-eqz v2, :no_top
+    invoke-virtual {v2}, Landroid/view/View;->animate()Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const/4 v3, 0x0
+    invoke-virtual {v2, v3}, Landroid/view/ViewPropertyAnimator;->alpha(F)Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const-wide/16 v3, 0xdc         # 220ms
+    invoke-virtual {v2, v3, v4}, Landroid/view/ViewPropertyAnimator;->setDuration(J)Landroid/view/ViewPropertyAnimator;
+    :no_top
+
+    sget-object v2, LX/TTrueReelHelper;->fsBottomBar:Landroid/view/View;
+    if-eqz v2, :no_bottom
+    invoke-virtual {v2}, Landroid/view/View;->animate()Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const/4 v3, 0x0
+    invoke-virtual {v2, v3}, Landroid/view/ViewPropertyAnimator;->alpha(F)Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const-wide/16 v3, 0xdc         # 220ms
+    invoke-virtual {v2, v3, v4}, Landroid/view/ViewPropertyAnimator;->setDuration(J)Landroid/view/ViewPropertyAnimator;
+    :no_bottom
+
+    sget-object v2, LX/TTrueReelHelper;->fsRail:Landroid/view/View;
+    if-eqz v2, :no_rail
+    invoke-virtual {v2}, Landroid/view/View;->animate()Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const/4 v3, 0x0
+    invoke-virtual {v2, v3}, Landroid/view/ViewPropertyAnimator;->alpha(F)Landroid/view/ViewPropertyAnimator;
+    move-result-object v2
+    const-wide/16 v3, 0xdc         # 220ms
+    invoke-virtual {v2, v3, v4}, Landroid/view/ViewPropertyAnimator;->setDuration(J)Landroid/view/ViewPropertyAnimator;
+    :no_rail
+
+    const-string v2, "InstaTrueReel"
+    const-string v3, "v0.11 fs: chrome hiding"
+    invoke-static {v2, v3}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
+
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+    return-void
+.end method
+
+
+# A35(J)Ljava/lang/String; == v0.11 format ms as "m:ss" (or "h:mm:ss").
+.method public static A35(J)Ljava/lang/String;
+    .locals 10
+
+    move-wide v0, p0
+    const-wide/16 v2, 0x3e8
+    div-long/2addr v0, v2          # total seconds
+    const-wide/16 v2, 0xe10        # 3600
+    move-wide v4, v0
+    div-long/2addr v4, v2          # h
+    rem-long/2addr v0, v2          # seconds within the hour
+    const-wide/16 v2, 0x3c         # 60
+    move-wide v6, v0
+    div-long/2addr v6, v2          # m
+    rem-long/2addr v0, v2          # s
+    long-to-int v6, v6
+    long-to-int v7, v0
+
+    new-instance v0, Ljava/lang/StringBuilder;
+    invoke-direct {v0}, Ljava/lang/StringBuilder;-><init>()V
+    const-wide/16 v2, 0x0
+    cmp-long v8, v4, v2
+    if-lez v8, :no_h
+    invoke-virtual {v0, v4, v5}, Ljava/lang/StringBuilder;->append(J)Ljava/lang/StringBuilder;
+    move-result-object v0
+    const/16 v8, 0x3a
+    invoke-virtual {v0, v8}, Ljava/lang/StringBuilder;->append(C)Ljava/lang/StringBuilder;
+    move-result-object v0
+    const/16 v8, 0xa
+    if-ge v6, v8, :no_mpad
+    const/16 v8, 0x30
+    invoke-virtual {v0, v8}, Ljava/lang/StringBuilder;->append(C)Ljava/lang/StringBuilder;
+    move-result-object v0
+    :no_mpad
+    :no_h
+    invoke-virtual {v0, v6}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
+    move-result-object v0
+    const/16 v8, 0x3a
+    invoke-virtual {v0, v8}, Ljava/lang/StringBuilder;->append(C)Ljava/lang/StringBuilder;
+    move-result-object v0
+    const/16 v8, 0xa
+    if-ge v7, v8, :no_spad
+    const/16 v8, 0x30
+    invoke-virtual {v0, v8}, Ljava/lang/StringBuilder;->append(C)Ljava/lang/StringBuilder;
+    move-result-object v0
+    :no_spad
+    invoke-virtual {v0, v7}, Ljava/lang/StringBuilder;->append(I)Ljava/lang/StringBuilder;
+    move-result-object v0
+    invoke-virtual {v0}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v0
+    return-object v0
+.end method
+
+
+# A36()V == v0.11 per-tick player housekeeping: (1) complete pending chrome
+# fade-outs (GONE after 240ms), (2) auto-hide when the 3s deadline passes
+# while playing, (3) sync scrubber + timestamps + center indicator + play
+# glyph from the HeroPlayer state (200ms cadence).
+.method public static A36()V
+    .locals 12
+
+    :try_start_0
+    sget-boolean v0, LX/TTrueReelHelper;->fsForced:Z
+    if-eqz v0, :ret
+
+    # ==== 1. fade-out completion ====
+    sget-wide v0, LX/TTrueReelHelper;->fsHidingAt:J
+    const-wide/16 v2, 0x0
+    cmp-long v4, v0, v2
+    if-lez v4, :sec2
+    invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
+    move-result-wide v2
+    const-wide/16 v4, 0xf0
+    add-long/2addr v0, v4
+    cmp-long v4, v2, v0
+    if-ltz v4, :sec2
+    sget-object v2, LX/TTrueReelHelper;->fsTopBar:Landroid/view/View;
+    if-eqz v2, :gone1
+    const/16 v3, 0x8
+    invoke-virtual {v2, v3}, Landroid/view/View;->setVisibility(I)V
+    :gone1
+    sget-object v2, LX/TTrueReelHelper;->fsBottomBar:Landroid/view/View;
+    if-eqz v2, :gone2
+    const/16 v3, 0x8
+    invoke-virtual {v2, v3}, Landroid/view/View;->setVisibility(I)V
+    :gone2
+    sget-object v2, LX/TTrueReelHelper;->fsRail:Landroid/view/View;
+    if-eqz v2, :gone3
+    const/16 v3, 0x8
+    invoke-virtual {v2, v3}, Landroid/view/View;->setVisibility(I)V
+    :gone3
+    const-wide/16 v2, 0x0
+    sput-wide v2, LX/TTrueReelHelper;->fsHidingAt:J
+
+    # ==== 2. auto-hide trigger ====
+    :sec2
+    sget-boolean v0, LX/TTrueReelHelper;->fsChromeOn:Z
+    if-eqz v0, :sec3
+    sget-boolean v0, LX/TTrueReelHelper;->fsDragging:Z
+    if-nez v0, :sec3
+    invoke-static {}, LX/TTrueReelHelper;->A30()LX/1cN;
+    move-result-object v0
+    if-eqz v0, :sec3
+    invoke-virtual {v0}, LX/1cN;->A0d()Z
+    move-result v0
+    if-eqz v0, :sec3
+    invoke-static {}, Landroid/os/SystemClock;->uptimeMillis()J
+    move-result-wide v0
+    sget-wide v2, LX/TTrueReelHelper;->fsHideAt:J
+    cmp-long v4, v0, v2
+    if-ltz v4, :sec3
+    invoke-static {}, LX/TTrueReelHelper;->A34()V
+
+    # ==== 3. player state -> UI ====
+    :sec3
+    invoke-static {}, LX/TTrueReelHelper;->A30()LX/1cN;
+    move-result-object v0
+    const/4 v1, 0x0
+    const-wide/16 v2, 0x0
+    const-wide/16 v4, 0x0
+    if-eqz v0, :st_done
+    invoke-virtual {v0}, LX/1cN;->A0c()Z
+    move-result v6
+    if-eqz v6, :st_done
+    invoke-virtual {v0}, LX/1cN;->A0d()Z
+    move-result v1
+    invoke-virtual {v0}, LX/1cN;->A0N()J
+    move-result-wide v2
+    invoke-virtual {v0}, LX/1cN;->A0O()J
+    move-result-wide v4
+    :st_done
+    sput-wide v4, LX/TTrueReelHelper;->fsDurMs:J
+
+    # center indicator: visible while paused
+    sget-object v6, LX/TTrueReelHelper;->fsPlayIcon:Landroid/view/View;
+    if-eqz v6, :no_icon
+    if-nez v1, :icon_gone
+    const/4 v7, 0x0
+    goto :icon_set
+    :icon_gone
+    const/16 v7, 0x8
+    :icon_set
+    invoke-virtual {v6, v7}, Landroid/view/View;->setVisibility(I)V
+    :no_icon
+
+    # play/pause glyph on state change
+    sget-boolean v6, LX/TTrueReelHelper;->fsPlayingLast:Z
+    if-eq v6, v1, :glyph_ok
+    sput-boolean v1, LX/TTrueReelHelper;->fsPlayingLast:Z
+    sget-object v6, LX/TTrueReelHelper;->fsPlayBtn:Landroid/widget/TextView;
+    if-eqz v6, :glyph_ok
+    if-nez v1, :glyph_play
+    const-string v7, "\u2016"
+    goto :glyph_set
+    :glyph_play
+    const-string v7, "\u25b6\ufe0e"
+    :glyph_set
+    invoke-virtual {v6, v7}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+    :glyph_ok
+
+    # duration label on change
+    sget-wide v6, LX/TTrueReelHelper;->fsDurShown:J
+    cmp-long v8, v6, v4
+    if-eqz v8, :dur_ok
+    sput-wide v4, LX/TTrueReelHelper;->fsDurShown:J
+    sget-object v6, LX/TTrueReelHelper;->fsTimeDur:Landroid/widget/TextView;
+    if-eqz v6, :dur_ok
+    invoke-static {v4, v5}, LX/TTrueReelHelper;->A35(J)Ljava/lang/String;
+    move-result-object v7
+    invoke-virtual {v6, v7}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+    :dur_ok
+
+    # scrubber + current time (skip while dragging)
+    sget-boolean v6, LX/TTrueReelHelper;->fsDragging:Z
+    if-nez v6, :ret
+    const-wide/16 v6, 0x0
+    cmp-long v8, v4, v6
+    if-lez v8, :ret
+    sget-object v6, LX/TTrueReelHelper;->fsSeek:Landroid/widget/SeekBar;
+    if-eqz v6, :ret
+    move-wide v8, v2
+    const-wide/16 v10, 0x3e8
+    mul-long/2addr v2, v10
+    div-long/2addr v2, v4
+    long-to-int v7, v2
+    invoke-virtual {v6, v7}, Landroid/widget/ProgressBar;->setProgress(I)V
+    sget-object v6, LX/TTrueReelHelper;->fsTimeCur:Landroid/widget/TextView;
+    if-eqz v6, :ret
+    invoke-static {v8, v9}, LX/TTrueReelHelper;->A35(J)Ljava/lang/String;
+    move-result-object v7
+    invoke-virtual {v6, v7}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+
+    :ret
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+    return-void
+.end method
+
+
+# A37(I)V == v0.11 seek to a scrubber position (0..1000) and update the label.
+.method public static A37(I)V
+    .locals 6
+
+    :try_start_0
+    sget-wide v0, LX/TTrueReelHelper;->fsDurMs:J
+    const-wide/16 v2, 0x0
+    cmp-long v4, v0, v2
+    if-lez v4, :ret
+    int-to-long v4, p0
+    mul-long/2addr v4, v0
+    const-wide/16 v0, 0x3e8
+    div-long/2addr v4, v0
+    invoke-static {}, LX/TTrueReelHelper;->A30()LX/1cN;
+    move-result-object v0
+    if-eqz v0, :label_only
+    long-to-int v1, v4
+    const/4 v2, 0x0
+    const/4 v3, 0x0
+    invoke-static {v0, v1, v2, v3}, LX/1cN;->A04(LX/1cN;IZZ)V
+    :label_only
+    invoke-static {v4, v5}, LX/TTrueReelHelper;->A35(J)Ljava/lang/String;
+    move-result-object v1
+    sget-object v2, LX/TTrueReelHelper;->fsTimeCur:Landroid/widget/TextView;
+    if-eqz v2, :ret
+    invoke-virtual {v2, v1}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+
+    :ret
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+    return-void
+.end method
+
+
+# A38()V == v0.11 scrubber drag began.
+.method public static A38()V
+    .locals 1
+
+    const/4 v0, 0x1
+    sput-boolean v0, LX/TTrueReelHelper;->fsDragging:Z
+
+    return-void
+.end method
+
+
+# A39(I)V == v0.11 scrubber drag preview: live-update the current-time label.
+.method public static A39(I)V
+    .locals 6
+
+    :try_start_0
+    sget-wide v0, LX/TTrueReelHelper;->fsDurMs:J
+    const-wide/16 v2, 0x0
+    cmp-long v4, v0, v2
+    if-lez v4, :ret
+    int-to-long v4, p0
+    mul-long/2addr v4, v0
+    const-wide/16 v0, 0x3e8
+    div-long/2addr v4, v0
+    invoke-static {v4, v5}, LX/TTrueReelHelper;->A35(J)Ljava/lang/String;
+    move-result-object v0
+    sget-object v1, LX/TTrueReelHelper;->fsTimeCur:Landroid/widget/TextView;
+    if-eqz v1, :ret
+    invoke-virtual {v1, v0}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+
+    :ret
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+    return-void
+.end method
+
+
+# A3A()V == v0.11 scrubber drag ended: seek + re-arm the auto-hide.
+.method public static A3A()V
+    .locals 2
+
+    :try_start_0
+    const/4 v0, 0x0
+    sput-boolean v0, LX/TTrueReelHelper;->fsDragging:Z
+    sget-object v0, LX/TTrueReelHelper;->fsSeek:Landroid/widget/SeekBar;
+    if-eqz v0, :no_seek
+    invoke-virtual {v0}, Landroid/widget/ProgressBar;->getProgress()I
+    move-result v0
+    invoke-static {v0}, LX/TTrueReelHelper;->A37(I)V
+    :no_seek
+    invoke-static {}, LX/TTrueReelHelper;->A33()V
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+    return-void
+.end method
+
+
+# A3B()LX/1j0; == v0.11 current ClipsItem (9Wz.A21 -> GeP.Bae), or null.
+.method public static A3B()LX/1j0;
+    .locals 2
+
+    :try_start_0
+    sget-object v0, LX/TTrueReelHelper;->A0F:Landroidx/fragment/app/Fragment;
+    if-eqz v0, :ret_null
+    instance-of v1, v0, LX/9Wz;
+    if-eqz v1, :ret_null
+    check-cast v0, LX/9Wz;
+    invoke-virtual {v0}, LX/9Wz;->A21()LX/GeP;
+    move-result-object v0
+    if-eqz v0, :ret_null
+    invoke-virtual {v0}, LX/GeP;->Bae()LX/1j0;
+    move-result-object v0
+    return-object v0
+
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    :ret_null
+    const/4 v0, 0x0
+    return-object v0
+
+    :catch_0
+    move-exception v0
+    const/4 v0, 0x0
+    return-object v0
+.end method
+
+
+# A3C()LX/11R; == v0.11 current ClipsItemState (9Wz.A1z -> ACN.A0T ->
+# Ait.A08(item)), or null.
+.method public static A3C()LX/11R;
+    .locals 2
+
+    :try_start_0
+    sget-object v0, LX/TTrueReelHelper;->A0F:Landroidx/fragment/app/Fragment;
+    if-eqz v0, :ret_null
+    instance-of v1, v0, LX/9Wz;
+    if-eqz v1, :ret_null
+    check-cast v0, LX/9Wz;
+    invoke-virtual {v0}, LX/9Wz;->A1z()LX/ACN;
+    move-result-object v0
+    if-eqz v0, :ret_null
+    iget-object v0, v0, LX/ACN;->A0T:LX/Ait;
+    if-eqz v0, :ret_null
+    invoke-static {}, LX/TTrueReelHelper;->A3B()LX/1j0;
+    move-result-object v1
+    if-eqz v1, :ret_null
+    invoke-virtual {v0, v1}, LX/Ait;->A08(LX/1j0;)LX/11R;
+    move-result-object v0
+    return-object v0
+
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    :ret_null
+    const/4 v0, 0x0
+    return-object v0
+
+    :catch_0
+    move-exception v0
+    const/4 v0, 0x0
+    return-object v0
+.end method
+
+
+# A3D()Z == v0.11 DIRECT like: A8Q.Dkz(item, state, null, false) — the exact
+# arguments the real like-button click passes (na1 pswitch_5). True on
+# success; false (or exception) means the caller should fall back to the
+# synthetic tap.
+.method public static A3D()Z
+    .locals 5
+
+    :try_start_0
+    sget-object v0, LX/TTrueReelHelper;->A0F:Landroidx/fragment/app/Fragment;
+    if-eqz v0, :fail
+    instance-of v1, v0, LX/9Wz;
+    if-eqz v1, :fail
+    check-cast v0, LX/9Wz;
+    invoke-static {v0}, LX/9Wz;->A06(LX/9Wz;)LX/9YF;
+    move-result-object v0
+    if-eqz v0, :fail
+    invoke-virtual {v0}, LX/9YF;->A0l()LX/A8Q;
+    move-result-object v0
+    if-eqz v0, :fail
+    invoke-static {}, LX/TTrueReelHelper;->A3B()LX/1j0;
+    move-result-object v1
+    if-eqz v1, :fail
+    invoke-static {}, LX/TTrueReelHelper;->A3C()LX/11R;
+    move-result-object v2
+    if-eqz v2, :fail
+    const/4 v3, 0x0
+    const/4 v4, 0x0
+    invoke-virtual {v0, v1, v2, v3, v4}, LX/A8Q;->Dkz(LX/1j0;LX/11R;LX/9bt;Z)V
+    const/4 v0, 0x1
+    return v0
+
+    :fail
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    const/4 v0, 0x0
+    return v0
+
+    :catch_0
+    move-exception v0
+    const/4 v0, 0x0
+    return v0
+.end method
+
+
+# A3E()V == v0.11 capture the touch-forwarding band: the on-screen bounds of
+# the video's ORIGINAL parent (still alive in the squished portrait layout
+# behind the overlay). The tap spy remaps full-screen touches into this band
+# so Instagram's real gesture pipeline (pager, tap-to-pause, double-tap-like)
+# receives them at valid coordinates.
+.method public static A3E()V
+    .locals 4
+
+    :try_start_0
+    const/4 v0, -0x1
+    sput v0, LX/TTrueReelHelper;->fsBandTop:I
+    sget-object v0, LX/TTrueReelHelper;->fsVideoParent:Landroid/view/ViewGroup;
+    if-eqz v0, :ret
+    invoke-virtual {v0}, Landroid/view/View;->getWidth()I
+    move-result v1
+    if-lez v1, :ret
+    invoke-virtual {v0}, Landroid/view/View;->getHeight()I
+    move-result v1
+    if-lez v1, :ret
+    const/4 v1, 0x2
+    new-array v1, v1, [I
+    invoke-virtual {v0, v1}, Landroid/view/View;->getLocationInWindow([I)V
+    const/4 v2, 0x1
+    aget v2, v1, v2
+    sput v2, LX/TTrueReelHelper;->fsBandTop:I
+    invoke-virtual {v0}, Landroid/view/View;->getHeight()I
+    move-result v2
+    sput v2, LX/TTrueReelHelper;->fsBandH:I
+    :ret
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    return-void
+
+    :catch_0
+    move-exception v0
+    return-void
+.end method
+
+
+# A3F(Landroid/content/Context;FI)Landroid/view/View; == v0.11 top bar
+# builder: 48dp content row (back chevron + title) over a 45%->transparent
+# TOP_BOTTOM gradient scrim, padded by the status-bar inset. Sets fsTopBar +
+# fsTitle.
+.method public static A3F(Landroid/content/Context;FI)Landroid/view/View;
+    .locals 8
+
+    :try_start_0
+    new-instance v0, Landroid/widget/LinearLayout;
+    invoke-direct {v0, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
+    new-instance v1, Landroid/graphics/drawable/GradientDrawable;
+    sget-object v2, Landroid/graphics/drawable/GradientDrawable$Orientation;->TOP_BOTTOM:Landroid/graphics/drawable/GradientDrawable$Orientation;
+    const v3, -0x4d000000    # 0xB3000000 45% black
+    const/4 v4, 0x0
+    filled-new-array {v3, v4}, [I
+    move-result-object v3
+    invoke-direct {v1, v2, v3}, Landroid/graphics/drawable/GradientDrawable;-><init>(Landroid/graphics/drawable/GradientDrawable$Orientation;[I)V
+    invoke-virtual {v0, v1}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V
+
+    # ---- back button ----
+    new-instance v1, Landroid/widget/TextView;
+    invoke-direct {v1, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+    const-string v2, "\u2039"
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+    const v2, -0x1
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTextColor(I)V
+    const/high16 v2, 0x42100000    # 36sp
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTextSize(F)V
+    sget-object v2, Landroid/graphics/Typeface;->DEFAULT_BOLD:Landroid/graphics/Typeface;
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTypeface(Landroid/graphics/Typeface;)V
+    const/high16 v2, 0x41600000    # 14dp side padding
+    mul-float/2addr v2, p1
+    float-to-int v2, v2
+    const/4 v3, 0x0
+    invoke-virtual {v1, v2, v3, v2, v3}, Landroid/view/View;->setPadding(IIII)V
+    const/16 v2, 0x10
+    invoke-virtual {v1, v2}, Landroid/view/View;->setGravity(I)V
+    new-instance v2, LX/TTrueReelClick;
+    const/4 v3, 0x2
+    invoke-direct {v2, v3}, LX/TTrueReelClick;-><init>(I)V
+    invoke-virtual {v1, v2}, Landroid/view/View;->setOnClickListener(Landroid/view/View$OnClickListener;)V
+    new-instance v2, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v3, -0x2
+    const/high16 v4, 0x42300000    # 48dp
+    mul-float/2addr v4, p1
+    float-to-int v4, v4
+    invoke-direct {v2, v3, v4}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v0, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+
+    # ---- title ----
+    new-instance v1, Landroid/widget/TextView;
+    invoke-direct {v1, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+    const v2, -0x1
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTextColor(I)V
+    const/high16 v2, 0x41800000    # 16sp
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setTextSize(F)V
+    const/4 v2, 0x1
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setMaxLines(I)V
+    sget-object v2, Landroid/text/TextUtils$TruncateAt;->END:Landroid/text/TextUtils$TruncateAt;
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setEllipsize(Landroid/text/TextUtils$TruncateAt;)V
+    const-string v2, "Reels"
+    invoke-virtual {v1, v2}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+    new-instance v2, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v3, 0x0
+    const/4 v4, -0x2
+    const/high16 v5, 0x3f800000    # 1.0f weight
+    invoke-direct {v2, v3, v4, v5}, Landroid/widget/LinearLayout$LayoutParams;-><init>(IIF)V
+    const/high16 v3, 0x41000000    # 8dp margins
+    mul-float/2addr v3, p1
+    float-to-int v3, v3
+    iput v3, v2, Landroid/view/ViewGroup$MarginLayoutParams;->leftMargin:I
+    iput v3, v2, Landroid/view/ViewGroup$MarginLayoutParams;->rightMargin:I
+    invoke-virtual {v0, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    sput-object v1, LX/TTrueReelHelper;->fsTitle:Landroid/widget/TextView;
+
+    # ---- bar padding: 10dp sides, insetTop + 2dp top, 6dp bottom ----
+    const/high16 v1, 0x41200000    # 10dp
+    mul-float/2addr v1, p1
+    float-to-int v1, v1
+    const/high16 v2, 0x40100000    # 2dp
+    mul-float/2addr v2, p1
+    float-to-int v2, v2
+    add-int v2, p2, v2
+    const/high16 v3, 0x40c00000    # 6dp
+    mul-float/2addr v3, p1
+    float-to-int v3, v3
+    invoke-virtual {v0, v1, v2, v1, v3}, Landroid/view/View;->setPadding(IIII)V
+    sput-object v0, LX/TTrueReelHelper;->fsTopBar:Landroid/view/View;
+
+    return-object v0
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    :catch_0
+    move-exception v0
+    const/4 v0, 0x0
+    return-object v0
+.end method
+
+
+# A3G(Landroid/content/Context;FI)Landroid/view/View; == v0.11 bottom bar
+# builder: 44dp row (play/pause + current time + thin scrubber + duration)
+# over a transparent->55% BOTTOM_TOP gradient, padded by the nav-bar inset.
+# Sets fsBottomBar, fsPlayBtn, fsTimeCur, fsTimeDur, fsSeek.
+.method public static A3G(Landroid/content/Context;FI)Landroid/view/View;
+    .locals 10
+
+    :try_start_0
+    # ---- bar ----
+    new-instance v0, Landroid/widget/LinearLayout;
+    invoke-direct {v0, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
+    const/4 v1, 0x1
+    invoke-virtual {v0, v1}, Landroid/widget/LinearLayout;->setOrientation(I)V
+    new-instance v1, Landroid/graphics/drawable/GradientDrawable;
+    sget-object v2, Landroid/graphics/drawable/GradientDrawable$Orientation;->BOTTOM_TOP:Landroid/graphics/drawable/GradientDrawable$Orientation;
+    const/4 v3, 0x0
+    const v4, -0x74000000    # 0x8C000000 55% black
+    filled-new-array {v3, v4}, [I
+    move-result-object v3
+    invoke-direct {v1, v2, v3}, Landroid/graphics/drawable/GradientDrawable;-><init>(Landroid/graphics/drawable/GradientDrawable$Orientation;[I)V
+    invoke-virtual {v0, v1}, Landroid/view/View;->setBackground(Landroid/graphics/drawable/Drawable;)V
+
+    # ---- row ----
+    new-instance v1, Landroid/widget/LinearLayout;
+    invoke-direct {v1, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
+    const/16 v2, 0x10
+    invoke-virtual {v1, v2}, Landroid/widget/LinearLayout;->setGravity(I)V
+    const/high16 v2, 0x42300000    # 44dp
+    mul-float/2addr v2, p1
+    float-to-int v2, v2
+    new-instance v3, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v4, -0x1
+    invoke-direct {v3, v4, v2}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v0, v1, v3}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+
+    # ---- play/pause button ----
+    new-instance v2, Landroid/widget/TextView;
+    invoke-direct {v2, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+    const-string v3, "\u2016"
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+    const v3, -0x1
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setTextColor(I)V
+    const/high16 v3, 0x41b00000    # 22sp
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setTextSize(F)V
+    const/16 v3, 0x11
+    invoke-virtual {v2, v3}, Landroid/view/View;->setGravity(I)V
+    new-instance v3, LX/TTrueReelClick;
+    const/4 v4, 0x6
+    invoke-direct {v3, v4}, LX/TTrueReelClick;-><init>(I)V
+    invoke-virtual {v2, v3}, Landroid/view/View;->setOnClickListener(Landroid/view/View$OnClickListener;)V
+    const/high16 v3, 0x42300000    # 44dp
+    mul-float/2addr v3, p1
+    float-to-int v3, v3
+    new-instance v4, Landroid/widget/LinearLayout$LayoutParams;
+    invoke-direct {v4, v3, v3}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v1, v2, v4}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    sput-object v2, LX/TTrueReelHelper;->fsPlayBtn:Landroid/widget/TextView;
+
+    # ---- current time ----
+    new-instance v2, Landroid/widget/TextView;
+    invoke-direct {v2, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+    const-string v3, "0:00"
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+    const v3, -0x19000001    # 0xE6FFFFFF
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setTextColor(I)V
+    const/high16 v3, 0x41400000    # 12sp
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setTextSize(F)V
+    new-instance v3, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v4, -0x2
+    const/4 v5, -0x2
+    invoke-direct {v3, v4, v5}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v1, v2, v3}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    sput-object v2, LX/TTrueReelHelper;->fsTimeCur:Landroid/widget/TextView;
+
+    # ---- scrubber ----
+    new-instance v2, Landroid/widget/SeekBar;
+    invoke-direct {v2, p0}, Landroid/widget/SeekBar;-><init>(Landroid/content/Context;)V
+    const/16 v3, 0x3e8
+    invoke-virtual {v2, v3}, Landroid/widget/ProgressBar;->setMax(I)V
+    # track background: 3dp 20%-white rect
+    new-instance v3, Landroid/graphics/drawable/GradientDrawable;
+    invoke-direct {v3}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
+    const/4 v4, 0x0
+    invoke-virtual {v3, v4}, Landroid/graphics/drawable/GradientDrawable;->setShape(I)V
+    const v4, 0x33ffffff
+    invoke-virtual {v3, v4}, Landroid/graphics/drawable/GradientDrawable;->setColor(I)V
+    const/high16 v4, 0x40400000    # 3dp
+    mul-float/2addr v4, p1
+    float-to-int v4, v4
+    const/16 v5, 0xa
+    invoke-virtual {v3, v5, v4}, Landroid/graphics/drawable/GradientDrawable;->setSize(II)V
+    # progress: 3dp white rect inside a horizontal clip
+    new-instance v5, Landroid/graphics/drawable/GradientDrawable;
+    invoke-direct {v5}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
+    const/4 v6, 0x0
+    invoke-virtual {v5, v6}, Landroid/graphics/drawable/GradientDrawable;->setShape(I)V
+    const v6, -0x1
+    invoke-virtual {v5, v6}, Landroid/graphics/drawable/GradientDrawable;->setColor(I)V
+    const/high16 v6, 0x40400000    # 3dp
+    mul-float/2addr v6, p1
+    float-to-int v6, v6
+    const/16 v7, 0xa
+    invoke-virtual {v5, v7, v6}, Landroid/graphics/drawable/GradientDrawable;->setSize(II)V
+    new-instance v6, Landroid/graphics/drawable/ClipDrawable;
+    const/4 v7, 0x3            # Gravity.LEFT
+    const/16 v8, 0x1           # ClipDrawable.HORIZONTAL
+    invoke-direct {v6, v5, v7, v8}, Landroid/graphics/drawable/ClipDrawable;-><init>(Landroid/graphics/drawable/Drawable;II)V
+    # layer them with the android progress-drawable ids
+    const/4 v5, 0x2
+    new-array v5, v5, [Landroid/graphics/drawable/Drawable;
+    const/4 v7, 0x0
+    aput-object v3, v5, v7
+    const/4 v7, 0x1
+    aput-object v6, v5, v7
+    new-instance v7, Landroid/graphics/drawable/LayerDrawable;
+    invoke-direct {v7, v5}, Landroid/graphics/drawable/LayerDrawable;-><init>([Landroid/graphics/drawable/Drawable;)V
+    const/4 v5, 0x0
+    const v6, 0x1020000        # android.R.id.background
+    invoke-virtual {v7, v5, v6}, Landroid/graphics/drawable/LayerDrawable;->setId(II)V
+    const/4 v5, 0x1
+    const v6, 0x1020001        # android.R.id.progress
+    invoke-virtual {v7, v5, v6}, Landroid/graphics/drawable/LayerDrawable;->setId(II)V
+    invoke-virtual {v2, v7}, Landroid/widget/ProgressBar;->setProgressDrawable(Landroid/graphics/drawable/Drawable;)V
+    # thumb: 12dp white oval
+    new-instance v5, Landroid/graphics/drawable/GradientDrawable;
+    invoke-direct {v5}, Landroid/graphics/drawable/GradientDrawable;-><init>()V
+    const/4 v6, 0x1
+    invoke-virtual {v5, v6}, Landroid/graphics/drawable/GradientDrawable;->setShape(I)V
+    const v6, -0x1
+    invoke-virtual {v5, v6}, Landroid/graphics/drawable/GradientDrawable;->setColor(I)V
+    const/high16 v6, 0x41400000    # 12dp
+    mul-float/2addr v6, p1
+    float-to-int v6, v6
+    invoke-virtual {v5, v6, v6}, Landroid/graphics/drawable/GradientDrawable;->setSize(II)V
+    invoke-virtual {v2, v5}, Landroid/widget/AbsSeekBar;->setThumb(Landroid/graphics/drawable/Drawable;)V
+    # drag listener
+    new-instance v5, LX/TTrueReelScrub;
+    invoke-direct {v5}, LX/TTrueReelScrub;-><init>()V
+    invoke-virtual {v2, v5}, Landroid/widget/SeekBar;->setOnSeekBarChangeListener(Landroid/widget/SeekBar$OnSeekBarChangeListener;)V
+    # row params: weight 1, 32dp tall, 10dp side margins
+    new-instance v5, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v6, 0x0
+    const/high16 v7, 0x42000000    # 32dp
+    mul-float/2addr v7, p1
+    float-to-int v7, v7
+    const/high16 v8, 0x3f800000    # 1.0f
+    invoke-direct {v5, v6, v7, v8}, Landroid/widget/LinearLayout$LayoutParams;-><init>(IIF)V
+    const/high16 v6, 0x41200000    # 10dp
+    mul-float/2addr v6, p1
+    float-to-int v6, v6
+    iput v6, v5, Landroid/view/ViewGroup$MarginLayoutParams;->leftMargin:I
+    iput v6, v5, Landroid/view/ViewGroup$MarginLayoutParams;->rightMargin:I
+    invoke-virtual {v1, v2, v5}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    sput-object v2, LX/TTrueReelHelper;->fsSeek:Landroid/widget/SeekBar;
+
+    # ---- duration ----
+    new-instance v2, Landroid/widget/TextView;
+    invoke-direct {v2, p0}, Landroid/widget/TextView;-><init>(Landroid/content/Context;)V
+    const-string v3, "0:00"
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setText(Ljava/lang/CharSequence;)V
+    const v3, -0x19000001    # 0xE6FFFFFF
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setTextColor(I)V
+    const/high16 v3, 0x41400000    # 12sp
+    invoke-virtual {v2, v3}, Landroid/widget/TextView;->setTextSize(F)V
+    new-instance v3, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v4, -0x2
+    const/4 v5, -0x2
+    invoke-direct {v3, v4, v5}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v1, v2, v3}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+    sput-object v2, LX/TTrueReelHelper;->fsTimeDur:Landroid/widget/TextView;
+
+    # ---- bar padding: 14dp sides, 4dp top, insetBottom + 8dp bottom ----
+    const/high16 v1, 0x41600000    # 14dp
+    mul-float/2addr v1, p1
+    float-to-int v1, v1
+    const/high16 v2, 0x40800000    # 4dp
+    mul-float/2addr v2, p1
+    float-to-int v2, v2
+    const/high16 v3, 0x41000000    # 8dp
+    mul-float/2addr v3, p1
+    float-to-int v3, v3
+    add-int v3, p2, v3
+    invoke-virtual {v0, v1, v2, v1, v3}, Landroid/view/View;->setPadding(IIII)V
+    sput-object v0, LX/TTrueReelHelper;->fsBottomBar:Landroid/view/View;
+
+    return-object v0
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    :catch_0
+    move-exception v0
+    const/4 v0, 0x0
+    return-object v0
+.end method
+
+
+# A3H(Landroid/content/Context;F)Landroid/view/View; == v0.11 right-edge
+# TikTok action rail: like / comment / share in 48dp 40%-black circles with
+# 14dp vertical gaps. Sets fsRail + fsLikeBtn.
+.method public static A3H(Landroid/content/Context;F)Landroid/view/View;
+    .locals 6
+
+    :try_start_0
+    new-instance v0, Landroid/widget/LinearLayout;
+    invoke-direct {v0, p0}, Landroid/widget/LinearLayout;-><init>(Landroid/content/Context;)V
+    const/4 v1, 0x1
+    invoke-virtual {v0, v1}, Landroid/widget/LinearLayout;->setOrientation(I)V
+
+    # ---- like ----
+    const-string v1, "\u2665"
+    const/4 v2, 0x3
+    invoke-static {p0, v1, v2, p1}, LX/TTrueReelHelper;->A2T(Landroid/content/Context;Ljava/lang/CharSequence;IF)Landroid/widget/TextView;
+    move-result-object v1
+    sput-object v1, LX/TTrueReelHelper;->fsLikeBtn:Landroid/widget/TextView;
+    new-instance v2, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v3, -0x2
+    const/4 v4, -0x2
+    invoke-direct {v2, v3, v4}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+    const/high16 v3, 0x41600000    # 14dp gap
+    mul-float/2addr v3, p1
+    float-to-int v3, v3
+    iput v3, v2, Landroid/view/ViewGroup$MarginLayoutParams;->bottomMargin:I
+    invoke-virtual {v0, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+
+    # ---- comment ----
+    const-string v1, "\ud83d\udcac"
+    const/4 v2, 0x4
+    invoke-static {p0, v1, v2, p1}, LX/TTrueReelHelper;->A2T(Landroid/content/Context;Ljava/lang/CharSequence;IF)Landroid/widget/TextView;
+    move-result-object v1
+    new-instance v2, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v3, -0x2
+    const/4 v4, -0x2
+    invoke-direct {v2, v3, v4}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+    const/high16 v3, 0x41600000    # 14dp gap
+    mul-float/2addr v3, p1
+    float-to-int v3, v3
+    iput v3, v2, Landroid/view/ViewGroup$MarginLayoutParams;->bottomMargin:I
+    invoke-virtual {v0, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+
+    # ---- share ----
+    const-string v1, "\u2197"
+    const/4 v2, 0x5
+    invoke-static {p0, v1, v2, p1}, LX/TTrueReelHelper;->A2T(Landroid/content/Context;Ljava/lang/CharSequence;IF)Landroid/widget/TextView;
+    move-result-object v1
+    new-instance v2, Landroid/widget/LinearLayout$LayoutParams;
+    const/4 v3, -0x2
+    const/4 v4, -0x2
+    invoke-direct {v2, v3, v4}, Landroid/widget/LinearLayout$LayoutParams;-><init>(II)V
+    invoke-virtual {v0, v1, v2}, Landroid/view/ViewGroup;->addView(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V
+
+    sput-object v0, LX/TTrueReelHelper;->fsRail:Landroid/view/View;
+    return-object v0
+    :try_end_0
+    .catch Ljava/lang/Throwable; {:try_start_0 .. :try_end_0} :catch_0
+
+    :catch_0
+    move-exception v0
+    const/4 v0, 0x0
+    return-object v0
 .end method
 
 
@@ -4088,6 +5143,11 @@
     sput-object v1, LX/TTrueReelHelper;->fsRailLike:Landroid/view/View;
     sput-object v1, LX/TTrueReelHelper;->fsRailComment:Landroid/view/View;
     sput-object v1, LX/TTrueReelHelper;->fsRailShare:Landroid/view/View;
+    sput-object v1, LX/TTrueReelHelper;->fsSeek:Landroid/widget/SeekBar;
+    sput-object v1, LX/TTrueReelHelper;->fsPlayBtn:Landroid/widget/TextView;
+    sput-object v1, LX/TTrueReelHelper;->fsRail:Landroid/view/View;
+    sput-object v1, LX/TTrueReelHelper;->fsTimeCur:Landroid/widget/TextView;
+    sput-object v1, LX/TTrueReelHelper;->fsTimeDur:Landroid/widget/TextView;
     sput-object v1, LX/TTrueReelHelper;->fsNewSeen:Landroid/view/View;
     sput-object v1, LX/TTrueReelHelper;->fsVideo:Landroid/view/View;
     sput-object v1, LX/TTrueReelHelper;->fsVideoParent:Landroid/view/ViewGroup;
@@ -4097,8 +5157,19 @@
     sput-boolean v1, LX/TTrueReelHelper;->fsPaused:Z
     sput-boolean v1, LX/TTrueReelHelper;->fsDebounced:Z
     sput-boolean v1, LX/TTrueReelHelper;->fsSanity:Z
+    sput-boolean v1, LX/TTrueReelHelper;->fsChromeOn:Z
+    sput-boolean v1, LX/TTrueReelHelper;->fsDragging:Z
+    sput-boolean v1, LX/TTrueReelHelper;->fsPlayingLast:Z
     const-wide/16 v1, 0x0
     sput-wide v1, LX/TTrueReelHelper;->fsAdoptAt:J
+    sput-wide v1, LX/TTrueReelHelper;->fsHidingAt:J
+    sput-wide v1, LX/TTrueReelHelper;->fsHideAt:J
+    sput-wide v1, LX/TTrueReelHelper;->fsDurMs:J
+    sput-wide v1, LX/TTrueReelHelper;->fsDurShown:J
+    const/4 v1, -0x1
+    sput v1, LX/TTrueReelHelper;->fsBandTop:I
+    const/4 v1, 0x0
+    sput v1, LX/TTrueReelHelper;->fsBandH:I
 
     # ---- back to portrait (DIRECT - bypasses the 6mW gate) ----
     sget-object v1, LX/TTrueReelHelper;->A09:Landroid/app/Activity;
@@ -4118,7 +5189,7 @@
     invoke-static {}, LX/TTrueReelHelper;->A05()V
 
     const-string v1, "InstaTrueReel"
-    const-string v2, "v0.10 fs: back to portrait"
+    const-string v2, "v0.11 fs: back to portrait"
     invoke-static {v1, v2}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
 
     :try_end_0

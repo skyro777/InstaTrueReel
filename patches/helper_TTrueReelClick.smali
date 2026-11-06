@@ -42,6 +42,9 @@
     const/4 v1, 0x5
     if-eq v0, v1, :cond_share
 
+    const/4 v1, 0x6
+    if-eq v0, v1, :cond_play
+
     # mode 1 (legacy exit) and anything else: exit landscape
     invoke-static {}, LX/TTrueReelHelper;->A26()V
     return-void
@@ -64,6 +67,11 @@
     :cond_share
     # mode 5: share (exits landscape, opens the portrait sheet)
     invoke-static {}, LX/TTrueReelHelper;->A2S()V
+    return-void
+
+    :cond_play
+    # mode 6: play/pause toggle (v0.11 bottom-bar button)
+    invoke-static {}, LX/TTrueReelHelper;->A31()V
     return-void
 
     :cond_enter

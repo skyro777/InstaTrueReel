@@ -32,7 +32,7 @@
     if-eqz v0, :stop
     sget-object v1, LX/TTrueReelHelper;->fsTick:Ljava/lang/Runnable;
     if-eqz v1, :stop
-    const-wide/16 v2, 0x1f4
+    const-wide/16 v2, 0xc8
     invoke-virtual {v0, v1, v2, v3}, Landroid/os/Handler;->postDelayed(Ljava/lang/Runnable;J)Z
 
     :stop

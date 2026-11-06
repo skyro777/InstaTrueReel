@@ -146,6 +146,10 @@ TICK_SRC = os.path.join(HERE, "helper_TTrueReelTick.smali")
 TICK_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelTick.smali")
 TAP_SRC = os.path.join(HERE, "helper_TTrueReelTap.smali")
 TAP_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelTap.smali")
+SCRUB_SRC = os.path.join(HERE, "helper_TTrueReelScrub.smali")
+SCRUB_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelScrub.smali")
+ACT_SRC = os.path.join(HERE, "helper_TTrueReelAct.smali")
+ACT_DST = os.path.join(DECODED, "smali_classes16", "X", "TTrueReelAct.smali")
 
 CLIPS_VIEWER = os.path.join(DECODED, "smali_classes16", "X", "9Wz.smali")
 CLIPS_TAB = os.path.join(DECODED, "smali_classes16", "X", "AFt.smali")
@@ -435,6 +439,18 @@ def main():
         shutil.copyfile(TAP_SRC, TAP_DST)
         report.append("  [ ok ] helper TTrueReelTap v0.10 installed -> smali_classes16/X/")
 
+    if os.path.isfile(SCRUB_DST):
+        report.append("  [skip] helper TTrueReelScrub already installed")
+    else:
+        shutil.copyfile(SCRUB_SRC, SCRUB_DST)
+        report.append("  [ ok ] helper TTrueReelScrub v0.11 installed -> smali_classes16/X/")
+
+    if os.path.isfile(ACT_DST):
+        report.append("  [skip] helper TTrueReelAct already installed")
+    else:
+        shutil.copyfile(ACT_SRC, ACT_DST)
+        report.append("  [ ok ] helper TTrueReelAct v0.11 installed -> smali_classes16/X/")
+
     # ---------- 2. THE CORE PATCH: force 9Wz.EEr() = true ----------
     report.append("ClipsViewerFragment native edge-to-edge switch (X/9Wz.EEr):")
     src = read(CLIPS_VIEWER)
@@ -598,7 +614,7 @@ def main():
         (HELPER_DST, "invoke-direct/range {v2 .. v7}", "helper v0.6 range-invoke arity correct"),
         (HELPER_DST, "0x7f0b3f45", "helper targets swipeable_tab_view_pager"),
         (HELPER_DST, "0x7f0b2246", "helper targets layout_container_main"),
-        (HELPER_DST, 'const-string v1, "InstaTrueReel v0.10.1: fullscreen ON"', "toast marker v0.10.1 present"),
+        (HELPER_DST, 'const-string v1, "InstaTrueReel v0.11.0: fullscreen ON"', "toast marker v0.11.0 present"),
         (HELPER_DST, 'v0.6 deblock eval: pager=', "v0.6 deblock eval diagnostics present"),
         (HELPER_DST, 'v0.7 liberate: chain freed (n=', "v0.7 liberation summary log present"),
         (HELPER_DST, 'v0.6 restore-layout: chain restored (n=', "v0.6 chain-restore log present"),
@@ -689,9 +705,9 @@ def main():
         (RECHECK_DST, ".class public LX/TTrueReelRecheck;", "v0.9 recheck listener class present"),
         (RECHECK_DST, "implements Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;", "v0.9 recheck implements layout listener"),
         (RECHECK_DST, "TTrueReelHelper;->A20(Landroid/app/Activity;)V", "v0.9 recheck -> fullscreen orchestrator"),
-        (TOUCH_DST, ".class public LX/TTrueReelTouch;", "v0.10 tap-spy class present"),
+        (TOUCH_DST, ".class public LX/TTrueReelTouch;", "v0.11 tap-spy class present"),
         (TOUCH_DST, "implements Landroid/view/View$OnTouchListener;", "v0.10 tap-spy implements OnTouchListener"),
-        (TOUCH_DST, "TTrueReelHelper;->A2N()V", "v0.10 tap-spy -> pause toggle"),
+        (TOUCH_DST, "TTrueReelHelper;->A32()V", "v0.11 tap-spy -> chrome toggle"),
         (TICK_DST, ".class public LX/TTrueReelTick;", "v0.10 tick class present"),
         (TICK_DST, "TTrueReelHelper;->A2K()V", "v0.10 tick -> landscape tick body"),
         (TAP_DST, ".class public LX/TTrueReelTap;", "v0.10 delayed-tap class present"),
@@ -737,9 +753,9 @@ def main():
         (HELPER_DST, "Landroid/graphics/drawable/GradientDrawable$Orientation;->TOP_BOTTOM:Landroid/graphics/drawable/GradientDrawable$Orientation;", "v0.10 top bar gradient present"),
         (HELPER_DST, "Landroid/view/ViewTreeObserver;->addOnGlobalLayoutListener(Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;)V", "v0.9 listener attach present"),
         (HELPER_DST, "Landroid/view/ViewTreeObserver;->removeOnGlobalLayoutListener(Landroid/view/ViewTreeObserver$OnGlobalLayoutListener;)V", "v0.9 listener detach present"),
-        (HELPER_DST, "v0.10 fs: landscape engaged (overlay player)", "v0.10 enter-landscape log present"),
-        (HELPER_DST, "v0.10 fs: back to portrait", "v0.10 exit-landscape log present"),
-        (HELPER_DST, "v0.10 fs: overlay player built", "v0.10 overlay-built log present"),
+        (HELPER_DST, "v0.11 fs: landscape engaged (player v2)", "v0.11 enter-landscape log present"),
+        (HELPER_DST, "v0.11 fs: back to portrait", "v0.11 exit-landscape log present"),
+        (HELPER_DST, "v0.11 fs: overlay player built (chrome v2)", "v0.11 overlay-built log present"),
         (HELPER_DST, "v0.10.1 fs: video adopted", "v0.10.1 video-adopted log present"),
         (HELPER_DST, "v0.10 fs: auto-exit (portrait video swiped in)", "v0.10 auto-exit log present"),
         (HELPER_DST, "v0.10 fs: surface never materialized", "v0.10 surface sanity log present"),
@@ -749,7 +765,7 @@ def main():
         (HELPER_DST, "invoke-static {}, LX/TTrueReelHelper;->A27()V", "v0.9 cleanup wired into A01"),
         (HELPER_DST, "invoke-static {p0}, LX/TTrueReelHelper;->A20(Landroid/app/Activity;)V", "v0.9 orchestrator wired into A15"),
         (HELPER_DST, "invoke-direct {v0}, LX/TTrueReelRecheck;-><init>()V", "v0.9 listener constructed in A05"),
-        (HELPER_DST, "invoke-direct {v2, v6}, LX/TTrueReelTouch;-><init>(I)V", "v0.10 tap-spy constructed in A2G"),
+        (HELPER_DST, "invoke-direct {v1, v2}, LX/TTrueReelTouch;-><init>(I)V", "v0.11 tap-spy constructed in A2G"),
         (HELPER_DST, "invoke-direct {v3}, LX/TTrueReelTick;-><init>()V", "v0.10 tick constructed in A24"),
         # ---- v0.10.1 (phase 9.1): black-screen fix + detector hardening ----
         (HELPER_DST, "fsAdoptAt:J", "v0.10.1 adopt-clock field present"),
@@ -761,6 +777,32 @@ def main():
         (HELPER_DST, "v0.10.1 fs: page change - swapping video (landscape)", "v0.10.1 swap log present"),
         (HELPER_DST, "v0.10.1 liberate: skipped (fs active)", "v0.10.1 portrait-surgery gate while fs active"),
         (HELPER_DST, ":keep_adopt_state", "v0.10.1 stale adopt state cleared on failure"),
+        # ---- v0.11 (phase 10): the proper player ----
+        (SCRUB_DST, ".class public LX/TTrueReelScrub;", "v0.11 scrubber listener class present"),
+        (SCRUB_DST, "implements Landroid/widget/SeekBar$OnSeekBarChangeListener;", "v0.11 scrubber implements OnSeekBarChangeListener"),
+        (ACT_DST, ".class public LX/TTrueReelAct;", "v0.11 post-exit action class present"),
+        (ACT_DST, "implements Ljava/lang/Runnable;", "v0.11 action class implements Runnable"),
+        (HELPER_DST, ".method public static A30()LX/1cN;", "v0.11 HeroPlayer resolver present"),
+        (HELPER_DST, "LX/2pL;->A03:LX/1c8;", "v0.11 player chain step 1 (listener -> GrootPlayerImpl)"),
+        (HELPER_DST, "LX/1c8;->A0A:LX/1cN;", "v0.11 player chain step 2 (impl -> HeroPlayer state machine)"),
+        (HELPER_DST, "LX/1cN;->A0N()J", "v0.11 position getter wired"),
+        (HELPER_DST, "LX/1cN;->A0O()J", "v0.11 duration getter wired"),
+        (HELPER_DST, "LX/1cN;->A04(LX/1cN;IZZ)V", "v0.11 seek wired"),
+        (HELPER_DST, "LX/1cN;->A0Z(Ljava/lang/String;)V", "v0.11 pause wired"),
+        (HELPER_DST, "LX/1cN;->A0S()V", "v0.11 play wired"),
+        (HELPER_DST, "LX/A8Q;->Dkz(LX/1j0;LX/11R;LX/9bt;Z)V", "v0.11 DIRECT like wired"),
+        (ACT_DST, "LX/9Wz;->A1K(LX/1j0;LX/9Wz;)V", "v0.11 DIRECT comment wired"),
+        (ACT_DST, "LX/9Wz;->A1H(Landroid/view/View;LX/EgN;LX/1j0;LX/11R;LX/9Wz;Ljava/lang/String;Ljava/lang/String;ZZ)V", "v0.11 DIRECT share wired"),
+        (HELPER_DST, "v0.11 fs: like (direct)", "v0.11 direct-like log present"),
+        (HELPER_DST, "v0.11 fs: chrome shown", "v0.11 chrome-show log present"),
+        (HELPER_DST, "v0.11 fs: chrome hiding", "v0.11 chrome-hide log present"),
+        (HELPER_DST, "invoke-static {}, LX/TTrueReelHelper;->A3E()V", "v0.11 forwarding band capture wired into tick"),
+        (TOUCH_DST, "Landroid/view/MotionEvent;->setLocation(FF)V", "v0.11 touch forwarding remap present"),
+        (HELPER_DST, ".method public static A3F(Landroid/content/Context;FI)Landroid/view/View;", "v0.11 top-bar builder present"),
+        (HELPER_DST, ".method public static A3G(Landroid/content/Context;FI)Landroid/view/View;", "v0.11 bottom-bar builder present"),
+        (HELPER_DST, ".method public static A3H(Landroid/content/Context;F)Landroid/view/View;", "v0.11 action-rail builder present"),
+        (HELPER_DST, "Landroid/widget/SeekBar$OnSeekBarChangeListener;", "v0.11 scrubber listener attached"),
+        (TOUCH_DST, "dispatchTouchEvent(Landroid/view/MotionEvent;)Z", "v0.11 tap-spy forwards touches"),
     ]
     for path, needle, label in checks:
         if needle in read(path):
